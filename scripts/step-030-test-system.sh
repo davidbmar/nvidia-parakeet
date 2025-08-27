@@ -195,11 +195,11 @@ fi
 echo -e "${GREEN}=== Performance Tests ===${NC}"
 
 run_test "Memory Usage" \
-    "ssh -i '$SSH_KEY_FILE' -o StrictHostKeyChecking=no ubuntu@$GPU_INSTANCE_IP 'free -m | grep Mem | awk \"{print \\$3}\"'" \
+    "ssh -i '$SSH_KEY_FILE' -o StrictHostKeyChecking=no ubuntu@$GPU_INSTANCE_IP 'free -m | grep Mem | awk \"{print \\\$3}\"'" \
     "[0-9]+"
 
 run_test "CPU Usage" \
-    "ssh -i '$SSH_KEY_FILE' -o StrictHostKeyChecking=no ubuntu@$GPU_INSTANCE_IP 'top -bn1 | grep \"Cpu(s)\" | awk \"{print \\$2}\" | cut -d% -f1'" \
+    "ssh -i '$SSH_KEY_FILE' -o StrictHostKeyChecking=no ubuntu@$GPU_INSTANCE_IP 'top -bn1 | grep \"Cpu(s)\" | awk \"{print \\\$2}\" | cut -d% -f1'" \
     "[0-9.]+"
 
 if [[ "$SERVICE_INFO" =~ "Tesla" ]] || [[ "$SERVICE_INFO" =~ "NVIDIA" ]]; then
