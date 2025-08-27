@@ -280,16 +280,25 @@ else
     echo "ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP 'sudo journalctl -u rnnt-server -n 50'"
 fi
 
-echo ""
-echo -e "${BLUE}📚 Next Steps:${NC}"
-echo -e "${YELLOW}1. Run the S3 transcription test:${NC}"
-echo "   ./scripts/step-035-verify-rnnt-model.sh"
-echo "   ./scripts/step-040-test-s3-transcription.sh"
-echo ""
-echo "2. Upload your audio files to test transcription"
-echo "3. Monitor system performance and logs"
-echo "4. Set up monitoring and alerting if needed"
-echo "5. Consider creating AMI snapshot for backup"
+# Load script utilities library
+SCRIPT_UTILS="$SCRIPT_DIR/lib/script-utils.sh"
+if [ -f "$SCRIPT_UTILS" ]; then
+    source "$SCRIPT_UTILS"
+    # Show dynamically discovered next steps
+    show_next_steps "$0"
+else
+    # Fallback to static next steps
+    echo ""
+    echo -e "${BLUE}📚 Next Steps:${NC}"
+    echo -e "${YELLOW}1. Run the S3 transcription test:${NC}"
+    echo "   ./scripts/step-035-verify-rnnt-model.sh"
+    echo "   ./scripts/step-040-test-s3-transcription.sh"
+    echo ""
+    echo "2. Upload your audio files to test transcription"
+    echo "3. Monitor system performance and logs"
+    echo "4. Set up monitoring and alerting if needed"
+    echo "5. Consider creating AMI snapshot for backup"
+fi
 
 # Update environment with test results
 COMPLETION_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
