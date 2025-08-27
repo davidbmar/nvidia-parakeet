@@ -282,10 +282,14 @@ fi
 
 echo ""
 echo -e "${BLUE}📚 Next Steps:${NC}"
-echo "• Upload your audio files to test transcription"
-echo "• Monitor system performance and logs"
-echo "• Set up monitoring and alerting if needed"
-echo "• Consider creating AMI snapshot for backup"
+echo -e "${YELLOW}1. Run the S3 transcription test:${NC}"
+echo "   ./scripts/step-035-verify-rnnt-model.sh"
+echo "   ./scripts/step-040-test-s3-transcription.sh"
+echo ""
+echo "2. Upload your audio files to test transcription"
+echo "3. Monitor system performance and logs"
+echo "4. Set up monitoring and alerting if needed"
+echo "5. Consider creating AMI snapshot for backup"
 
 # Update environment with test results
 COMPLETION_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
