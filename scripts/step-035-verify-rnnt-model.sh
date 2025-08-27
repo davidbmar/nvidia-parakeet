@@ -202,8 +202,11 @@ echo -e "${GREEN}=== Step 5: Testing API Endpoints ===${NC}"
 
 ROOT_RESPONSE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "curl -s --connect-timeout 10 http://localhost:8000/ || echo 'failed'")
 
-if [[ "$ROOT_RESPONSE" == *"Production RNN-T"* ]] && [[ "$ROOT_RESPONSE" == *"actual_transcription"* ]]; then
-    echo -e "${GREEN}✅ Root endpoint confirms actual transcription capability${NC}"
+if [[ "$ROOT_RESPONSE" == *"Production RNN-T"* ]] && [[ "$ROOT_RESPONSE" == *"RNN-T Conformer"* ]] && [[ "$ROOT_RESPONSE" == *"speechbrain"* ]]; then
+    echo -e "${GREEN}✅ Root endpoint confirms RNN-T transcription server${NC}"
+    echo "Model: $(echo "$ROOT_RESPONSE" | grep -oP '"model":"[^"]*"' | cut -d'"' -f4)"
+    echo "Architecture: $(echo "$ROOT_RESPONSE" | grep -oP '"architecture":"[^"]*"' | cut -d'"' -f4)"
+    echo "Status: $(echo "$ROOT_RESPONSE" | grep -oP '"status":"[^"]*"' | cut -d'"' -f4)"
 else
     echo -e "${RED}❌ Root endpoint response unexpected${NC}"
     echo "Response: $ROOT_RESPONSE"
