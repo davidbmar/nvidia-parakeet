@@ -107,7 +107,7 @@ echo "This may take 30-60 seconds depending on audio length..."
 
 # Create transcription request
 TRANSCRIPTION_REQUEST='{
-    "s3_uri": "'"$S3_TEST_AUDIO"'",
+    "s3_input_path": "'"$S3_TEST_AUDIO"'",
     "language": "en-US"
 }'
 
