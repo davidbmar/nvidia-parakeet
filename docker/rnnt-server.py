@@ -179,7 +179,7 @@ def preprocess_audio(audio_path: str) -> tuple:
         logger.error(f"Audio preprocessing failed: {e}")
         raise HTTPException(status_code=400, detail=f"Audio preprocessing failed: {str(e)}")
 
-def transcribe_with_rnnt(audio_path: str) -> Dict[str, Any]:
+async def transcribe_with_rnnt(audio_path: str) -> Dict[str, Any]:
     """Transcribe audio using SpeechBrain Conformer RNN-T"""
     global asr_model, MODEL_LOADED
     
@@ -314,7 +314,7 @@ async def transcribe_file(
             logger.info(f"Processing: {file.filename} ({len(content)} bytes)")
             
             # Transcribe with RNN-T
-            result = transcribe_with_rnnt(tmp_file_path)
+            result = await transcribe_with_rnnt(tmp_file_path)
             
             # Add file metadata
             result.update({
@@ -354,7 +354,7 @@ async def transcribe_s3(request: S3TranscriptionRequest):
             s3_client.download_file(bucket, key, tmp_file.name)
             
             # Transcribe
-            result = transcribe_with_rnnt(tmp_file.name)
+            result = await transcribe_with_rnnt(tmp_file.name)
             result['source'] = request.s3_input_path
             
             # Upload result to S3 if requested
