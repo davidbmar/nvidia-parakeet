@@ -31,8 +31,8 @@
 
 ```bash
 # 1. Clone and configure
-git clone <this-repo>
-cd production-rnnt-deploy
+git clone https://github.com/davidbmar/nvidia-rnn-t-riva-nonmock-really-transcribe.git
+cd nvidia-rnn-t-riva-nonmock-really-transcribe
 
 # 2. One-command setup (interactive)
 ./scripts/step-000-setup-configuration.sh
