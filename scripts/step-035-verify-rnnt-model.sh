@@ -49,26 +49,50 @@ ssh_cmd() {
     fi
 }
 
-# Step 1: Check container status
-echo -e "${GREEN}=== Step 1: Checking Container Status ===${NC}"
-CONTAINER_STATUS=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "docker ps --format 'table {{.Names}}\t{{.Status}}' | grep rnnt-server || echo 'not running'")
+# Step 1: Auto-detect deployment method (Docker or Systemd)
+echo -e "${GREEN}=== Step 1: Detecting Deployment Method ===${NC}"
 
-if [[ "$CONTAINER_STATUS" == *"not running"* ]]; then
-    echo -e "${RED}❌ RNN-T container is not running${NC}"
-    echo "Run: ./scripts/step-025-deploy-rnnt-docker.sh first"
+# Check for Docker container first
+CONTAINER_STATUS=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "docker ps --format 'table {{.Names}}\t{{.Status}}' 2>/dev/null | grep rnnt-server || echo 'not running'")
+
+# Check for systemd service
+SERVICE_STATUS=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "sudo systemctl is-active rnnt-server 2>/dev/null || echo 'inactive'")
+
+DEPLOYMENT_METHOD=""
+if [[ "$CONTAINER_STATUS" != *"not running"* ]]; then
+    DEPLOYMENT_METHOD="docker"
+    echo -e "${GREEN}✅ Found Docker container: $CONTAINER_STATUS${NC}"
+elif [ "$SERVICE_STATUS" = "active" ]; then
+    DEPLOYMENT_METHOD="systemd"
+    echo -e "${GREEN}✅ Found systemd service: $SERVICE_STATUS${NC}"
+else
+    echo -e "${RED}❌ No RNN-T deployment found (neither Docker nor systemd)${NC}"
+    echo "Run one of these first:"
+    echo "  ./scripts/step-020-install-rnnt-server.sh (for systemd)"
+    echo "  ./scripts/step-025-deploy-rnnt-docker.sh (for Docker)"
     exit 1
 fi
 
-echo -e "${GREEN}✅ Container Status: $CONTAINER_STATUS${NC}"
+echo -e "${BLUE}ℹ️  Using deployment method: $DEPLOYMENT_METHOD${NC}"
 
 # Step 2: Check GPU access
 echo -e "${GREEN}=== Step 2: Verifying GPU Access ===${NC}"
-GPU_INFO=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "docker exec rnnt-server nvidia-smi --query-gpu=name,memory.total,utilization.gpu --format=csv,noheader,nounits 2>/dev/null || echo 'gpu-failed'")
+if [ "$DEPLOYMENT_METHOD" = "docker" ]; then
+    GPU_INFO=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "docker exec rnnt-server nvidia-smi --query-gpu=name,memory.total,utilization.gpu --format=csv,noheader,nounits 2>/dev/null || echo 'gpu-failed'")
+else
+    GPU_INFO=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "nvidia-smi --query-gpu=name,memory.total,utilization.gpu --format=csv,noheader,nounits 2>/dev/null || echo 'gpu-failed'")
+fi
 
 if [[ "$GPU_INFO" == *"gpu-failed"* ]]; then
-    echo -e "${RED}❌ GPU not accessible in container${NC}"
-    ssh_cmd "docker logs --tail 20 rnnt-server"
-    exit 1
+    echo -e "${YELLOW}⚠️  GPU not directly accessible (may still work)${NC}"
+    if [ "$DEPLOYMENT_METHOD" = "docker" ]; then
+        echo "Checking container logs..."
+        ssh_cmd "docker logs --tail 20 rnnt-server"
+    else
+        echo "Checking service logs..."
+        ssh_cmd "sudo journalctl -u rnnt-server --no-pager -n 20"
+    fi
+    # Don't exit - GPU may still work
 fi
 
 echo -e "${GREEN}✅ GPU Info: $GPU_INFO${NC}"
@@ -157,8 +181,12 @@ except Exception as e:
 echo "$MODEL_TEST_SCRIPT" > /tmp/model_test.py
 scp -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no /tmp/model_test.py ubuntu@"$GPU_INSTANCE_IP":/tmp/model_test.py
 
-echo -e "${BLUE}🧪 Running model verification inside container...${NC}"
-MODEL_TEST_RESULT=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "docker exec rnnt-server python3 /tmp/model_test.py 2>&1")
+echo -e "${BLUE}🧪 Running model verification...${NC}"
+if [ "$DEPLOYMENT_METHOD" = "docker" ]; then
+    MODEL_TEST_RESULT=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "docker exec rnnt-server python3 /tmp/model_test.py 2>&1")
+else
+    MODEL_TEST_RESULT=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "cd /opt/rnnt && source venv/bin/activate && python3 /tmp/model_test.py 2>&1")
+fi
 
 if [[ "$MODEL_TEST_RESULT" == *"RNN-T architecture confirmed"* ]]; then
     echo -e "${GREEN}✅ RNN-T Model Verification Passed${NC}"
