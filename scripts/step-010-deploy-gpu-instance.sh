@@ -231,6 +231,14 @@ chown ubuntu:ubuntu /opt/rnnt
 EOF
 )
     
+    # Generate unique instance name with timestamp (mmddyytime format)
+    TIMESTAMP=$(date +"%m%d%y%H%M")
+    FULL_INSTANCE_NAME="${INSTANCE_NAME:-rnnt-gpu}-${TIMESTAMP}"
+    echo "Instance name: $FULL_INSTANCE_NAME"
+    
+    # Update .env file with the full instance name
+    sed -i "s/INSTANCE_NAME=\".*\"/INSTANCE_NAME=\"$FULL_INSTANCE_NAME\"/" "$ENV_FILE"
+    
     GPU_INSTANCE_ID=$(aws ec2 run-instances \
         --image-id "$AMI_ID" \
         --count 1 \
@@ -239,7 +247,7 @@ EOF
         --security-group-ids "$SECURITY_GROUP_ID" \
         --region "$AWS_REGION" \
         --user-data "$USER_DATA" \
-        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=rnnt-production-server},{Key=Purpose,Value=speech-transcription}]" \
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$FULL_INSTANCE_NAME},{Key=Purpose,Value=speech-transcription}]" \
         --query 'Instances[0].InstanceId' \
         --output text)
     
