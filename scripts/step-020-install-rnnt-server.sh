@@ -155,10 +155,28 @@ ssh_cmd "sudo systemctl enable rnnt-server"
 
 # Step 8: Download and Cache Model
 echo -e "${GREEN}=== Step 8: Downloading RNN-T Model ===${NC}"
-echo -e "${YELLOW}⏳ This may take several minutes (downloading ~1.5GB model)...${NC}"
 
-# Create model download script
-MODEL_DOWNLOAD_SCRIPT="
+# Check if model exists in S3
+if aws s3 ls "s3://$AUDIO_BUCKET/bintarball/rnnt/model.tar.gz" &>/dev/null; then
+    echo -e "${BLUE}📦 Downloading pre-cached model from S3...${NC}"
+    echo "S3 Location: s3://$AUDIO_BUCKET/bintarball/rnnt/model.tar.gz"
+    
+    # Download model from S3
+    ssh_cmd "aws s3 cp s3://$AUDIO_BUCKET/bintarball/rnnt/model.tar.gz /opt/rnnt/model.tar.gz --region $AWS_REGION"
+    
+    # Extract model
+    ssh_cmd "cd /opt/rnnt && tar -xzf model.tar.gz"
+    ssh_cmd "mv /opt/rnnt/asr-conformer-transformerlm-librispeech /opt/rnnt/models/"
+    ssh_cmd "rm -f /opt/rnnt/model.tar.gz"
+    
+    echo -e "${GREEN}✅ Model downloaded from S3 successfully${NC}"
+    echo "💾 Model cached in: /opt/rnnt/models/"
+else
+    echo -e "${YELLOW}⚠️  Model not found in S3, downloading from Hugging Face...${NC}"
+    echo -e "${YELLOW}⏳ This may take several minutes (downloading ~1.5GB model)...${NC}"
+    
+    # Create model download script for Hugging Face fallback
+    MODEL_DOWNLOAD_SCRIPT="
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -166,7 +184,7 @@ import os
 import torch
 from speechbrain.inference import EncoderDecoderASR
 
-print('🔥 Downloading SpeechBrain Conformer RNN-T model...')
+print('🔥 Downloading SpeechBrain Conformer RNN-T model from Hugging Face...')
 try:
     model = EncoderDecoderASR.from_hparams(
         source='speechbrain/asr-conformer-transformerlm-librispeech',
@@ -180,12 +198,18 @@ except Exception as e:
     print(f'❌ Model download failed: {e}')
     exit(1)
 "
-
-echo "$MODEL_DOWNLOAD_SCRIPT" > /tmp/download_model.py
-copy_to_instance "/tmp/download_model.py" "/opt/rnnt/download_model.py"
-
-# Run model download
-ssh_cmd "cd /opt/rnnt && source venv/bin/activate && python download_model.py"
+    
+    echo "$MODEL_DOWNLOAD_SCRIPT" > /tmp/download_model.py
+    copy_to_instance "/tmp/download_model.py" "/opt/rnnt/download_model.py"
+    
+    # Run model download
+    ssh_cmd "cd /opt/rnnt && source venv/bin/activate && python download_model.py"
+    
+    echo ""
+    echo -e "${YELLOW}💡 TIP: To speed up future deployments, run:${NC}"
+    echo "   ./scripts/prepare-model-for-s3.sh"
+    echo "   This will cache the model in S3 for faster downloads"
+fi
 
 # Step 9: Start the Service
 echo -e "${GREEN}=== Step 9: Starting RNN-T Server ===${NC}"

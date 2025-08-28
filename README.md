@@ -29,6 +29,19 @@
 
 ## Quick Start
 
+### Option 1: Automated Full Deployment (Recommended)
+```bash
+# Clone and run everything with logging
+git clone https://github.com/davidbmar/nvidia-rnn-t-riva-nonmock-really-transcribe.git
+cd nvidia-rnn-t-riva-nonmock-really-transcribe
+
+# Run all steps automatically with full logging
+./scripts/run-all-steps.sh
+
+# System is ready! 🎉
+```
+
+### Option 2: Step-by-Step Deployment
 ```bash
 # 1. Clone and configure
 git clone https://github.com/davidbmar/nvidia-rnn-t-riva-nonmock-really-transcribe.git
@@ -45,6 +58,15 @@ cd nvidia-rnn-t-riva-nonmock-really-transcribe
 
 # 5. Test the system
 ./scripts/step-030-test-system.sh
+
+# 6. Verify RNN-T model
+./scripts/step-035-verify-rnnt-model.sh
+
+# 7. Fix AWS credentials for S3
+./scripts/step-037-fix-aws-credentials.sh
+
+# 8. Test S3 transcription
+./scripts/step-040-test-s3-transcription.sh
 
 # System is ready! 🎉
 ```
