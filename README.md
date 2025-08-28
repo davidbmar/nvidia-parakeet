@@ -115,7 +115,7 @@ production-rnnt-deploy/
 ├── docker/            # Server application code
 │   └── rnnt-server.py
 ├── config/            # Configuration templates
-│   ├── .env.template
+│   ├── env.template
 │   └── requirements.txt
 ├── docs/              # Documentation
 └── tests/             # Test scripts and audio samples

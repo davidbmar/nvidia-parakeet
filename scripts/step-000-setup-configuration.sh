@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 CONFIG_DIR="$PROJECT_ROOT/config"
 ENV_FILE="$PROJECT_ROOT/.env"
-TEMPLATE_FILE="$CONFIG_DIR/.env.template"
+TEMPLATE_FILE="$CONFIG_DIR/env.template"
 
 # Colors for output
 RED='\033[0;31m'
