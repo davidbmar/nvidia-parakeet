@@ -119,10 +119,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     )
                     
             except WebSocketDisconnect:
+                logger.info(f"WebSocket client {client_id} disconnected")
                 break
             except Exception as e:
                 logger.error(f"WebSocket message error: {e}")
-                await ws_handler.send_error(websocket, str(e))
+                # Don't try to send error if connection is closed
+                try:
+                    await ws_handler.send_error(websocket, str(e))
+                except:
+                    # Connection already closed, break the loop
+                    break
                 
     except Exception as e:
         logger.error(f"WebSocket connection error: {e}")

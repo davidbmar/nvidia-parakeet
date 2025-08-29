@@ -341,6 +341,14 @@ class WebSocketHandler:
             await websocket.send_json(message)
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
+            # Remove from active connections if send fails
+            client_id = None
+            for cid, ws in self.active_connections.items():
+                if ws == websocket:
+                    client_id = cid
+                    break
+            if client_id and client_id in self.active_connections:
+                del self.active_connections[client_id]
     
     async def send_error(self, websocket: WebSocket, error: str):
         """
