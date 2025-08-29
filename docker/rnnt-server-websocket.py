@@ -12,12 +12,17 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Import original server components
-from rnnt_server import *
+# Import original server components but avoid route conflicts
+from rnnt_server import (
+    app, logger, RNNT_SERVER_PORT, RNNT_SERVER_HOST, RNNT_MODEL_SOURCE,
+    MODEL_LOADED, MODEL_LOAD_TIME, LOG_LEVEL, DEV_MODE,
+    asr_model, load_model, health_check, transcribe_file, transcribe_s3,
+    torch, uvicorn
+)
 
 # Import WebSocket components
 from websocket.websocket_handler import WebSocketHandler
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
 # Create WebSocket handler instance
@@ -37,6 +42,14 @@ async def startup_event_enhanced():
     # Initialize WebSocket handler
     ws_handler = WebSocketHandler(asr_model)
     logger.info("✅ WebSocket handler initialized")
+
+# Remove the original root route to avoid conflicts
+original_routes = app.routes[:]
+app.routes.clear()
+for route in original_routes:
+    if hasattr(route, 'path') and route.path == '/':
+        continue  # Skip the original root route
+    app.routes.append(route)
 
 # Mount static files for web interface
 app.mount("/static", StaticFiles(directory="static"), name="static")
