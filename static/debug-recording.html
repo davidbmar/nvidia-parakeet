@@ -108,6 +108,23 @@
             logMessage('=== STEP 1: Testing microphone access ===');
             setStepStatus('step1', 'pending', 'Testing...');
             
+            // Check if getUserMedia is available
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                logMessage('❌ navigator.mediaDevices.getUserMedia is not available');
+                if (location.protocol === 'http:' && location.hostname !== 'localhost') {
+                    logMessage('💡 SOLUTION: This page is loaded over HTTP, but microphone access requires HTTPS');
+                    logMessage('💡 Try one of these options:');
+                    logMessage('   1. Use localhost instead of IP: http://localhost:8000/static/debug-recording.html');
+                    logMessage('   2. Set up HTTPS/SSL certificate');
+                    logMessage('   3. Use Chrome with --unsafely-treat-insecure-origin-as-secure flag');
+                } else if (!navigator.mediaDevices) {
+                    logMessage('💡 SOLUTION: Your browser doesn\'t support the MediaDevices API');
+                    logMessage('💡 Try updating to a modern browser (Chrome, Firefox, Safari, Edge)');
+                }
+                setStepStatus('step1', 'error', '❌ MediaDevices API not available');
+                return;
+            }
+            
             try {
                 logMessage('Requesting microphone permission...');
                 const stream = await navigator.mediaDevices.getUserMedia({ 

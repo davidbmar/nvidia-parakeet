@@ -26,7 +26,8 @@ class AudioRecorder {
         
         // Buffers
         this.audioBuffer = [];
-        this.chunkSize = Math.floor(this.sampleRate * this.chunkDuration / 1000);
+        // Use 2048 instead of 1600 (not power of 2) for Web Audio API compatibility
+        this.chunkSize = 2048;
     }
     
     /**
