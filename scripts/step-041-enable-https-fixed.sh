@@ -97,13 +97,56 @@ fi
 
 echo -e "${GREEN}=== Step 3: Deploying Fixed WebSocket Components ===${NC}"
 # Copy all fixed WebSocket components with tensor conversion fixes
-scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../websocket/websocket_handler.py" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/websocket/websocket_handler.py
-scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../websocket/transcription_stream.py" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/websocket/transcription_stream.py
-scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../websocket/audio_processor.py" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/websocket/audio_processor.py
+log "Copying WebSocket components with tensor fixes..."
+
+if scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../websocket/websocket_handler.py" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/websocket/websocket_handler.py; then
+    log "websocket_handler.py copied successfully"
+else
+    log_error "Failed to copy websocket_handler.py"
+    exit 1
+fi
+
+if scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../websocket/transcription_stream.py" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/websocket/transcription_stream.py; then
+    log "transcription_stream.py copied successfully"
+else
+    log_error "Failed to copy transcription_stream.py"
+    exit 1
+fi
+
+if scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../websocket/audio_processor.py" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/websocket/audio_processor.py; then
+    log "audio_processor.py copied successfully"
+else
+    log_error "Failed to copy audio_processor.py"
+    exit 1
+fi
+
+# Verify tensor fix is deployed
+log "Verifying tensor conversion fix is deployed..."
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'isinstance.*torch.Tensor' /opt/rnnt/websocket/transcription_stream.py"; then
+    log "✅ Tensor conversion fix verified in deployed file"
+else
+    log_error "❌ Tensor conversion fix not found in deployed file"
+    exit 1
+fi
+
+# Verify MODEL DEBUG line is deployed  
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'MODEL DEBUG' /opt/rnnt/websocket/transcription_stream.py"; then
+    log "✅ Debug logging verified in deployed file"
+else
+    log_error "❌ Debug logging not found in deployed file"
+    exit 1
+fi
 
 # Clear Python cache to ensure new files are loaded
-ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "sudo rm -rf /opt/rnnt/websocket/__pycache__"
-echo -e "${GREEN}✅ Fixed WebSocket components deployed with tensor fixes${NC}"
+log "Clearing Python cache..."
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "sudo rm -rf /opt/rnnt/websocket/__pycache__"; then
+    log "Python cache cleared successfully"
+else
+    log_error "Failed to clear Python cache"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ Fixed WebSocket components deployed and verified${NC}"
 
 echo -e "${GREEN}=== Step 4: Updating Client JavaScript ===${NC}"
 # Ensure static/js directory exists
