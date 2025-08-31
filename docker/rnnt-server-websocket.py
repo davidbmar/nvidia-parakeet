@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Enhanced RNN-T Server with WebSocket Support
+Enhanced RNN-T Server with WebSocket Support - FIXED VERSION
 Adds real-time audio streaming capabilities to the production server
+Fixed: Proper disconnect handling to prevent infinite loops
 """
 
 import os
@@ -24,9 +25,11 @@ from rnnt_server import (
 from websocket.websocket_handler import WebSocketHandler
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
+from starlette.websockets import WebSocketState
 
 # Create WebSocket handler instance
 ws_handler = None
+active_connections = set()
 
 @app.on_event("startup")
 async def startup_event_enhanced():
@@ -96,12 +99,23 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         # Accept connection
         await ws_handler.connect(websocket, client_id)
+        active_connections.add(client_id)
         
         # Handle messages
         while True:
             try:
+                # Check if connection is still open before receiving
+                if websocket.client_state != WebSocketState.CONNECTED:
+                    logger.info(f"WebSocket client {client_id} connection closed")
+                    break
+                    
                 # Receive message (binary or text)
                 message = await websocket.receive()
+                
+                # Check for disconnect message
+                if "type" in message and message["type"] == "websocket.disconnect":
+                    logger.info(f"WebSocket client {client_id} sent disconnect")
+                    break
                 
                 if "bytes" in message:
                     # Binary audio data
@@ -115,74 +129,60 @@ async def websocket_endpoint(websocket: WebSocket):
                     await ws_handler.handle_message(
                         websocket,
                         client_id,
-                        message["text"].encode('utf-8')
+                        message["text"]
                     )
                     
             except WebSocketDisconnect:
                 logger.info(f"WebSocket client {client_id} disconnected")
                 break
             except Exception as e:
-                logger.error(f"WebSocket message error: {e}")
-                # Don't try to send error if connection is closed
-                try:
-                    await ws_handler.send_error(websocket, str(e))
-                except:
-                    # Connection already closed, break the loop
-                    break
+                # Log error but don't try to send if connection might be closed
+                logger.error(f"WebSocket message error for {client_id}: {e}")
                 
+                # Only try to send error if connection is still open
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    try:
+                        await ws_handler.send_error(websocket, str(e))
+                    except:
+                        # If send fails, connection is closed
+                        break
+                else:
+                    # Connection closed, exit loop
+                    break
+                    
     except Exception as e:
-        logger.error(f"WebSocket connection error: {e}")
+        logger.error(f"WebSocket connection error for {client_id}: {e}")
     finally:
-        # Clean up connection
+        # Clean disconnect
+        active_connections.discard(client_id)
         await ws_handler.disconnect(client_id)
-
-@app.get("/demo")
-async def demo_redirect():
-    """Redirect to demo page"""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/static/index.html")
+        
+        # Ensure WebSocket is closed properly
+        if websocket.client_state == WebSocketState.CONNECTED:
+            try:
+                await websocket.close()
+            except:
+                pass  # Already closed
+        
+        logger.info(f"WebSocket client {client_id} cleanup complete")
 
 @app.get("/ws/status")
 async def websocket_status():
-    """Get WebSocket connection status"""
-    if not ws_handler:
-        return {"status": "not_initialized"}
-    
+    """Get WebSocket server status"""
     return {
         "status": "active",
-        "active_connections": len(ws_handler.active_connections),
-        "clients": list(ws_handler.active_connections.keys())
+        "websocket_ready": ws_handler is not None,
+        "model_loaded": MODEL_LOADED,
+        "active_connections": len(active_connections),
+        "gpu_available": torch.cuda.is_available()
     }
 
-# Enhanced health check
-@app.get("/health/extended")
-async def health_check_extended():
-    """Extended health check with WebSocket info"""
-    base_health = await health_check()
-    
-    # Add WebSocket information
-    base_health["websocket"] = {
-        "enabled": True,
-        "handler_ready": ws_handler is not None,
-        "active_connections": len(ws_handler.active_connections) if ws_handler else 0
-    }
-    
-    return base_health
-
+# Main execution
 if __name__ == "__main__":
-    print("=" * 60)
-    print("🎯 Enhanced RNN-T Server with WebSocket Streaming")
-    print(f"📝 Model: {RNNT_MODEL_SOURCE}")
-    print(f"🔥 GPU: {'Available' if torch.cuda.is_available() else 'Not Available'}")
-    print(f"🌐 REST API: http://{RNNT_SERVER_HOST}:{RNNT_SERVER_PORT}")
-    print(f"🔌 WebSocket: ws://{RNNT_SERVER_HOST}:{RNNT_SERVER_PORT}/ws/transcribe")
-    print(f"🖥️ Demo UI: http://{RNNT_SERVER_HOST}:{RNNT_SERVER_PORT}/static/index.html")
-    print("=" * 60)
-    
     uvicorn.run(
-        app, 
-        host=RNNT_SERVER_HOST, 
+        app,
+        host=RNNT_SERVER_HOST,
         port=RNNT_SERVER_PORT,
         log_level=LOG_LEVEL.lower(),
-        access_log=DEV_MODE
+        reload=DEV_MODE
     )

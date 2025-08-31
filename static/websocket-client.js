@@ -1,297 +1,253 @@
 /**
- * WebSocket Client for RNN-T Streaming
- * Manages WebSocket connection and message protocol
- * 
- * Clear, simple implementation for developers to understand and extend
+ * WebSocket Real-Time Transcription Client
+ * Handles audio recording, WebSocket communication, and real-time display
+ * Automatically detects protocol (HTTP->WS, HTTPS->WSS)
  */
 
 class TranscriptionWebSocket {
     constructor(options = {}) {
-        // Configuration
-        this.url = options.url || `ws://${window.location.hostname}:8000/ws/transcribe`;
-        this.clientId = options.clientId || this.generateClientId();
-        this.reconnectDelay = options.reconnectDelay || 1000;
-        this.maxReconnectDelay = options.maxReconnectDelay || 30000;
-        this.reconnectAttempts = 0;
+        // Auto-detect protocol and build WebSocket URL
+        const protocol = window.location.protocol;
+        const host = window.location.host;
+        const wsProtocol = (protocol === 'https:') ? 'wss:' : 'ws:';
         
-        // Callbacks
-        this.onTranscription = options.onTranscription || null;
-        this.onPartialTranscription = options.onPartialTranscription || null;
-        this.onConnect = options.onConnect || null;
-        this.onDisconnect = options.onDisconnect || null;
-        this.onError = options.onError || console.error;
+        this.url = options.url || `${wsProtocol}//${host}/ws/transcribe`;
+        this.clientId = options.clientId || `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        // State
+        console.log(`WebSocket URL: ${this.url}`);
+        console.log(`Client ID: ${this.clientId}`);
+        
+        this.onTranscription = options.onTranscription || ((text) => console.log('Transcript:', text));
+        this.onPartialTranscription = options.onPartialTranscription || ((text) => console.log('Partial:', text));
+        this.onConnect = options.onConnect || (() => console.log('Connected'));
+        this.onDisconnect = options.onDisconnect || (() => console.log('Disconnected'));
+        this.onError = options.onError || ((error) => console.error('Error:', error));
+        
         this.ws = null;
+        this.isRecording = false;
+        this.audioContext = null;
+        this.mediaStream = null;
+        this.processor = null;
+        
+        // Connection state
         this.isConnected = false;
-        this.messageQueue = [];
-        this.reconnectTimer = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
     }
     
-    /**
-     * Connect to WebSocket server
-     */
-    connect() {
+    async connect() {
         try {
-            // Create WebSocket connection
-            this.ws = new WebSocket(`${this.url}?client_id=${this.clientId}`);
-            this.ws.binaryType = 'arraybuffer';
+            console.log('Connecting to WebSocket...');
             
-            // Connection opened
+            // Add client ID to URL
+            const urlWithClient = `${this.url}?client_id=${this.clientId}`;
+            this.ws = new WebSocket(urlWithClient);
+            
             this.ws.onopen = () => {
-                console.log('WebSocket connected');
+                console.log('✅ WebSocket connected');
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
+                if (this.onConnect) this.onConnect();
                 
-                // Send queued messages
-                this.flushMessageQueue();
-                
-                // Callback
-                if (this.onConnect) {
-                    this.onConnect();
-                }
+                // Send initial configuration
+                this.sendMessage({
+                    type: 'config',
+                    config: {
+                        sample_rate: 16000,
+                        encoding: 'pcm16',
+                        language: 'en'
+                    }
+                });
             };
             
-            // Message received
             this.ws.onmessage = (event) => {
-                this.handleMessage(event.data);
-            };
-            
-            // Connection closed
-            this.ws.onclose = (event) => {
-                console.log('WebSocket disconnected:', event.code, event.reason);
-                this.isConnected = false;
-                
-                if (this.onDisconnect) {
-                    this.onDisconnect();
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('📨 Received:', data);
+                    
+                    switch (data.type) {
+                        case 'partial':
+                            if (this.onPartialTranscription) this.onPartialTranscription(data.text || data.transcript);
+                            break;
+                        case 'final':
+                        case 'transcript':
+                            if (this.onTranscription) this.onTranscription(data.text || data.transcript);
+                            break;
+                        case 'error':
+                            this.onError(data.message || data.error);
+                            break;
+                        case 'status':
+                            this.onStatus(data.message);
+                            break;
+                        default:
+                            console.log('Unknown message type:', data.type);
+                    }
+                } catch (e) {
+                    console.error('❌ Error parsing message:', e, event.data);
                 }
-                
-                // Attempt reconnection
-                this.scheduleReconnect();
             };
             
-            // Error occurred
             this.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                if (this.onError) {
-                    this.onError(error);
+                console.error('❌ WebSocket error:', error);
+                if (this.onError) this.onError({ message: 'WebSocket connection error' });
+            };
+            
+            this.ws.onclose = (event) => {
+                console.log('🔌 WebSocket closed:', event.code, event.reason);
+                this.isConnected = false;
+                if (this.onDisconnect) this.onDisconnect();
+                
+                // Auto-reconnect if not a clean close
+                if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnect();
                 }
             };
             
         } catch (error) {
-            console.error('Failed to connect:', error);
-            this.scheduleReconnect();
+            console.error('❌ Failed to create WebSocket:', error);
+            if (this.onError) this.onError({ message: 'Failed to connect to server' });
         }
     }
     
-    /**
-     * Disconnect from server
-     */
-    disconnect() {
-        this.isConnected = false;
+    reconnect() {
+        this.reconnectAttempts++;
+        const delay = Math.min(1000 * this.reconnectAttempts, 5000);
         
-        // Cancel reconnection
-        if (this.reconnectTimer) {
-            clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
-        }
+        console.log(`Reconnecting in ${delay/1000}s... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
         
-        // Close WebSocket
-        if (this.ws) {
-            this.ws.close();
-            this.ws = null;
-        }
-    }
-    
-    /**
-     * Send audio data to server
-     * @param {ArrayBuffer} audioData - PCM16 audio data
-     */
-    sendAudio(audioData) {
-        if (!this.isConnected) {
-            // Queue message if not connected
-            this.messageQueue.push(audioData);
-            return;
-        }
-        
-        try {
-            this.ws.send(audioData);
-        } catch (error) {
-            console.error('Failed to send audio:', error);
-            this.messageQueue.push(audioData);
-        }
-    }
-    
-    /**
-     * Send control message to server
-     * @param {Object} message - JSON message object
-     */
-    sendMessage(message) {
-        if (!this.isConnected) {
-            this.messageQueue.push(message);
-            return;
-        }
-        
-        try {
-            this.ws.send(JSON.stringify(message));
-        } catch (error) {
-            console.error('Failed to send message:', error);
-            this.messageQueue.push(message);
-        }
-    }
-    
-    /**
-     * Start recording session
-     * @param {Object} config - Recording configuration
-     */
-    startRecording(config = {}) {
-        this.sendMessage({
-            type: 'start_recording',
-            timestamp: Date.now(),
-            config: {
-                sample_rate: config.sampleRate || 16000,
-                encoding: config.encoding || 'pcm16',
-                language: config.language || 'en',
-                ...config
-            }
-        });
-    }
-    
-    /**
-     * Stop recording session
-     */
-    stopRecording() {
-        this.sendMessage({
-            type: 'stop_recording',
-            timestamp: Date.now()
-        });
-    }
-    
-    /**
-     * Configure stream parameters
-     * @param {Object} config - Stream configuration
-     */
-    configure(config) {
-        this.sendMessage({
-            type: 'configure',
-            ...config
-        });
-    }
-    
-    /**
-     * Handle incoming message from server
-     * @param {string|ArrayBuffer} data - Message data
-     */
-    handleMessage(data) {
-        try {
-            // Parse JSON message
-            const message = typeof data === 'string' 
-                ? JSON.parse(data) 
-                : JSON.parse(new TextDecoder().decode(data));
-            
-            switch (message.type) {
-                case 'connection':
-                    console.log('Connection established:', message);
-                    break;
-                    
-                case 'transcription':
-                    if (this.onTranscription) {
-                        this.onTranscription(message);
-                    }
-                    break;
-                    
-                case 'partial':
-                    if (this.onPartialTranscription) {
-                        this.onPartialTranscription(message);
-                    }
-                    break;
-                    
-                case 'error':
-                    console.error('Server error:', message.error);
-                    if (this.onError) {
-                        this.onError(new Error(message.error));
-                    }
-                    break;
-                    
-                case 'recording_started':
-                    console.log('Recording started');
-                    break;
-                    
-                case 'recording_stopped':
-                    console.log('Recording stopped:', message);
-                    if (this.onTranscription) {
-                        this.onTranscription({
-                            type: 'final',
-                            text: message.final_transcript,
-                            duration: message.total_duration,
-                            segments: message.total_segments
-                        });
-                    }
-                    break;
-                    
-                default:
-                    console.log('Unknown message type:', message.type, message);
-            }
-            
-        } catch (error) {
-            console.error('Failed to handle message:', error);
-        }
-    }
-    
-    /**
-     * Schedule reconnection attempt
-     */
-    scheduleReconnect() {
-        // Don't reconnect if manually disconnected
-        if (!this.ws) return;
-        
-        // Calculate delay with exponential backoff
-        const delay = Math.min(
-            this.reconnectDelay * Math.pow(2, this.reconnectAttempts),
-            this.maxReconnectDelay
-        );
-        
-        console.log(`Reconnecting in ${delay}ms...`);
-        
-        this.reconnectTimer = setTimeout(() => {
-            this.reconnectAttempts++;
+        setTimeout(() => {
             this.connect();
         }, delay);
     }
     
-    /**
-     * Send queued messages
-     */
-    flushMessageQueue() {
-        while (this.messageQueue.length > 0 && this.isConnected) {
-            const message = this.messageQueue.shift();
-            
-            if (message instanceof ArrayBuffer) {
-                this.sendAudio(message);
-            } else {
-                this.sendMessage(message);
-            }
+    sendMessage(message) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(message));
+        } else {
+            console.warn('⚠️ WebSocket not ready');
         }
     }
     
-    /**
-     * Generate unique client ID
-     * @returns {string} Client ID
-     */
-    generateClientId() {
-        return `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    sendAudio(audioData) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(audioData);
+        } else {
+            console.warn('⚠️ Cannot send audio - WebSocket not ready');
+        }
     }
     
-    /**
-     * Get connection status
-     * @returns {boolean} Connection status
-     */
-    isConnected() {
-        return this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN;
+    // Alias method for compatibility with HTML
+    send(data) {
+        this.sendAudio(data);
+    }
+    
+    // WebSocket control methods expected by HTML
+    startRecording(options = {}) {
+        console.log('📤 Starting recording session');
+        this.sendMessage({
+            type: 'start_recording',
+            config: options
+        });
+    }
+    
+    stopRecording() {
+        console.log('📤 Stopping recording session');
+        this.sendMessage({
+            type: 'stop_recording'
+        });
+    }
+    
+    async startAudioRecording() {
+        if (this.isRecording) return;
+        
+        try {
+            console.log('Starting recording...');
+            
+            // Request microphone access
+            this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    sampleRate: 16000,
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true
+                } 
+            });
+            
+            // Create audio context
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                sampleRate: 16000
+            });
+            
+            const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+            
+            // Create script processor for audio data
+            this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+            
+            this.processor.onaudioprocess = (event) => {
+                if (!this.isRecording) return;
+                
+                const inputData = event.inputBuffer.getChannelData(0);
+                
+                // Convert to 16-bit PCM
+                const pcmData = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                    pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+                }
+                
+                // Send audio data
+                this.sendAudio(pcmData.buffer);
+            };
+            
+            source.connect(this.processor);
+            this.processor.connect(this.audioContext.destination);
+            
+            this.isRecording = true;
+            console.log('🎤 Recording... Speak now!');
+            
+        } catch (error) {
+            console.error('❌ Failed to start recording:', error);
+            if (this.onError) this.onError({ message: 'Could not access microphone' });
+        }
+    }
+    
+    stopAudioRecording() {
+        if (!this.isRecording) return;
+        
+        this.isRecording = false;
+        
+        if (this.processor) {
+            this.processor.disconnect();
+            this.processor = null;
+        }
+        
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
+        
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => track.stop());
+            this.mediaStream = null;
+        }
+        
+        console.log('⏹️ Recording stopped');
+        
+        // Send end-of-stream signal
+        this.sendMessage({ type: 'end' });
+    }
+    
+    disconnect() {
+        this.stopAudioRecording();
+        
+        if (this.ws) {
+            this.ws.close(1000, 'Client disconnect');
+            this.ws = null;
+        }
+        
+        this.isConnected = false;
+        console.log('Disconnected');
     }
 }
 
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = TranscriptionWebSocket;
-}
+// Export for use in HTML
+window.TranscriptionWebSocket = TranscriptionWebSocket;
