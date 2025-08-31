@@ -79,6 +79,46 @@ ssh_cmd() {
     fi
 }
 
+# Function to wait for package manager lock to be released
+wait_for_apt_lock() {
+    echo -e "${YELLOW}⏳ Checking for package manager availability...${NC}"
+    local max_wait=300  # 5 minutes maximum
+    local waited=0
+    
+    while [ $waited -lt $max_wait ]; do
+        # Check if any apt/dpkg process is running
+        if ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+           "sudo lsof /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock 2>/dev/null | grep -q ." 2>/dev/null; then
+            
+            if [ $waited -eq 0 ]; then
+                echo -e "${YELLOW}⚠️  Package manager is locked (likely unattended-upgrades running)${NC}"
+                echo -e "${YELLOW}   Waiting for it to complete (up to 5 minutes)...${NC}"
+            fi
+            
+            echo -n "   Waiting... ($waited seconds elapsed)"
+            sleep 10
+            waited=$((waited + 10))
+            echo -ne "\r\033[K"  # Clear the line
+        else
+            if [ $waited -gt 0 ]; then
+                echo -e "\n${GREEN}✅ Package manager is now available${NC}"
+            fi
+            return 0
+        fi
+    done
+    
+    echo -e "\n${RED}❌ Package manager still locked after 5 minutes${NC}"
+    echo -e "${YELLOW}   You can manually fix this by running:${NC}"
+    echo "   ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP 'sudo killall apt apt-get dpkg unattended-upgrade'"
+    return 1
+}
+
+# Function to run apt-get commands with lock checking
+apt_cmd() {
+    wait_for_apt_lock
+    ssh_cmd "$@"
+}
+
 # Function to copy files to instance
 copy_to_instance() {
     local local_path="$1"
@@ -102,9 +142,9 @@ echo -e "${GREEN}✅ SSH connection confirmed${NC}"
 
 # Step 2: System Update and Dependencies
 echo -e "${GREEN}=== Step 2: Installing System Dependencies ===${NC}"
-ssh_cmd "sudo apt-get update && sudo apt-get upgrade -y"
-ssh_cmd "sudo apt-get install -y python3-pip python3-venv python3-dev build-essential"
-ssh_cmd "sudo apt-get install -y ffmpeg libsndfile1 git curl wget"
+apt_cmd "sudo apt-get update && sudo apt-get upgrade -y"
+apt_cmd "sudo apt-get install -y python3-pip python3-venv python3-dev build-essential"
+apt_cmd "sudo apt-get install -y ffmpeg libsndfile1 git curl wget"
 
 # Install AWS CLI if not present
 ssh_cmd "which aws || (curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o awscliv2.zip && unzip awscliv2.zip && sudo ./aws/install)"
@@ -114,7 +154,7 @@ echo -e "${GREEN}=== Step 3: NVIDIA Driver Setup ===${NC}"
 NVIDIA_CHECK=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "nvidia-smi || echo 'not-found'" 2>/dev/null)
 if [[ "$NVIDIA_CHECK" == *"not-found"* ]]; then
     echo "Installing NVIDIA drivers..."
-    ssh_cmd "sudo apt-get install -y ubuntu-drivers-common"
+    apt_cmd "sudo apt-get install -y ubuntu-drivers-common"
     ssh_cmd "sudo ubuntu-drivers autoinstall"
     echo -e "${YELLOW}⚠️  NVIDIA drivers installed, reboot may be required${NC}"
 else
