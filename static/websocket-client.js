@@ -8,10 +8,24 @@ class TranscriptionWebSocket {
     constructor(options = {}) {
         // Auto-detect protocol and build WebSocket URL
         const protocol = window.location.protocol;
-        const host = window.location.host;
-        const wsProtocol = (protocol === 'https:') ? 'wss:' : 'ws:';
+        const hostname = window.location.hostname;
+        const port = window.location.port;
         
-        this.url = options.url || `${wsProtocol}//${host}/ws/transcribe`;
+        let wsProtocol, wsPort;
+        if (protocol === 'https:') {
+            wsProtocol = 'wss:';
+            wsPort = port || '443';
+        } else {
+            wsProtocol = 'ws:';
+            wsPort = port || '8000';
+        }
+        
+        // For HTTPS on standard port 443, don't include port in URL
+        const hostWithPort = (protocol === 'https:' && wsPort === '443') 
+            ? hostname 
+            : `${hostname}:${wsPort}`;
+        
+        this.url = options.url || `${wsProtocol}//${hostWithPort}/ws/transcribe`;
         this.clientId = options.clientId || `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         console.log(`WebSocket URL: ${this.url}`);
@@ -74,7 +88,7 @@ class TranscriptionWebSocket {
                             if (this.onTranscription) this.onTranscription(data.text || data.transcript);
                             break;
                         case 'error':
-                            this.onError(data.message || data.error);
+                            this.onError({ message: data.message || data.error || 'Unknown error' });
                             break;
                         case 'status':
                             this.onStatus(data.message);
@@ -89,7 +103,8 @@ class TranscriptionWebSocket {
             
             this.ws.onerror = (error) => {
                 console.error('❌ WebSocket error:', error);
-                if (this.onError) this.onError({ message: 'WebSocket connection error' });
+                const errorMsg = error.message || error.reason || 'WebSocket connection error';
+                if (this.onError) this.onError({ message: errorMsg });
             };
             
             this.ws.onclose = (event) => {

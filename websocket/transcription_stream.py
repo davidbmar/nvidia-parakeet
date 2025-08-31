@@ -121,15 +121,42 @@ class TranscriptionStream:
         # For now, simplified inference
         # In production, this would use model's streaming API
         try:
+            # Ensure we have a proper tensor
+            logger.info(f"🔍 TENSOR DEBUG: Input type: {type(audio_tensor)}, shape/len: {getattr(audio_tensor, 'shape', len(audio_tensor) if hasattr(audio_tensor, '__len__') else 'no length')}")
+            if not isinstance(audio_tensor, torch.Tensor):
+                logger.warning(f"⚠️ Converting {type(audio_tensor)} to tensor")
+                if isinstance(audio_tensor, list):
+                    audio_tensor = torch.tensor(audio_tensor, dtype=torch.float32)
+                    logger.info(f"✅ Converted list to tensor: {audio_tensor.shape}")
+                elif isinstance(audio_tensor, np.ndarray):
+                    audio_tensor = torch.from_numpy(audio_tensor)
+                    logger.info(f"✅ Converted numpy to tensor: {audio_tensor.shape}")
+            else:
+                logger.info(f"✅ Already a tensor: {audio_tensor.shape}")
+            
+            # Move to device if needed
+            if self.device == 'cuda' and audio_tensor.device.type != 'cuda':
+                audio_tensor = audio_tensor.cuda()
+            
             # Convert tensor to expected format
             if audio_tensor.dim() == 2:
                 audio_tensor = audio_tensor.squeeze(0)
+            elif audio_tensor.dim() == 0:
+                # Handle scalar tensor
+                logger.warning("Received scalar tensor, skipping")
+                return ""
+            
+            # Prepare lengths tensor (also on same device)
+            lengths_tensor = torch.tensor([audio_tensor.shape[0]], dtype=torch.long)
+            if self.device == 'cuda':
+                lengths_tensor = lengths_tensor.cuda()
             
             # Run transcription
             # Note: SpeechBrain's transcribe method may vary
+            logger.info(f"🔍 MODEL DEBUG: Calling transcribe_batch with audio: {audio_tensor.unsqueeze(0).shape}, lengths: {lengths_tensor}")
             transcription = self.asr_model.transcribe_batch(
                 audio_tensor.unsqueeze(0),
-                [torch.tensor([audio_tensor.shape[0]])]
+                lengths_tensor
             )
             
             if isinstance(transcription, list):

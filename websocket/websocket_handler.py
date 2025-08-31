@@ -6,10 +6,12 @@ Manages WebSocket connections and message routing
 
 import json
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from fastapi import WebSocket, WebSocketDisconnect
 import logging
 from datetime import datetime
+import torch
+import numpy as np
 
 from .audio_processor import AudioProcessor
 from .transcription_stream import TranscriptionStream
@@ -106,7 +108,7 @@ class WebSocketHandler:
         self,
         websocket: WebSocket,
         client_id: str,
-        message: bytes
+        message: Union[bytes, str]
     ):
         """
         Route and handle incoming WebSocket messages
@@ -114,12 +116,12 @@ class WebSocketHandler:
         Args:
             websocket: WebSocket connection
             client_id: Client identifier
-            message: Raw message bytes
+            message: Raw message bytes or text
         """
         try:
             # Check if message is JSON control message or binary audio
-            if message[:1] == b'{':
-                # JSON control message
+            if isinstance(message, str) or (isinstance(message, bytes) and message[:1] == b'{'):
+                # JSON control message (string or JSON bytes)
                 await self._handle_control_message(websocket, client_id, message)
             else:
                 # Binary audio data
@@ -133,7 +135,7 @@ class WebSocketHandler:
         self,
         websocket: WebSocket,
         client_id: str,
-        message: bytes
+        message: Union[bytes, str]
     ):
         """
         Handle JSON control messages
@@ -141,10 +143,14 @@ class WebSocketHandler:
         Args:
             websocket: WebSocket connection
             client_id: Client identifier
-            message: JSON message bytes
+            message: JSON message bytes or string
         """
         try:
-            data = json.loads(message.decode('utf-8'))
+            # Handle both string and bytes
+            if isinstance(message, str):
+                data = json.loads(message)
+            else:
+                data = json.loads(message.decode('utf-8'))
             message_type = data.get('type')
             
             if message_type == 'start_recording':
@@ -363,8 +369,3 @@ class WebSocketHandler:
             'error': error,
             'timestamp': datetime.utcnow().isoformat()
         })
-
-
-# Import torch for device checking
-import torch
-import numpy as np

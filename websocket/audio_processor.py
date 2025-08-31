@@ -96,8 +96,8 @@ class AudioProcessor:
         # Detect voice activity
         has_voice = self._detect_voice_activity(audio_array)
         
-        # Add to current segment
-        self.current_segment.extend(audio_array)
+        # Add to current segment (convert to list to maintain compatibility)
+        self.current_segment.extend(audio_array.tolist())
         
         # Check for end of segment
         is_end_of_segment = False
