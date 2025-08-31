@@ -280,9 +280,11 @@ chown ubuntu:ubuntu /opt/rnnt
 EOF
 )
     
-    # Generate unique instance name with timestamp (mmddyytime format)
-    TIMESTAMP=$(date +"%m%d%y%H%M")
-    FULL_INSTANCE_NAME="${INSTANCE_NAME:-rnnt-gpu}-${TIMESTAMP}"
+    # Generate unique instance name with readable timestamp format
+    # Format: rnnt-gpu-MM-DD-YY-HHMM (e.g., rnnt-gpu-08-31-25-1430)
+    TIMESTAMP=$(date +"%m-%d-%y-%H%M")
+    BASE_INSTANCE_NAME="rnnt-gpu"
+    FULL_INSTANCE_NAME="${BASE_INSTANCE_NAME}-${TIMESTAMP}"
     echo "Instance name: $FULL_INSTANCE_NAME"
     
     # Update .env file with the full instance name
@@ -367,8 +369,19 @@ echo -e "${BLUE}🔌 Test SSH Connection:${NC}"
 echo "   ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP"
 echo ""
 echo -e "${YELLOW}📜 Next Steps:${NC}"
+echo ""
+echo "Choose ONE deployment method:"
+echo ""
+echo -e "${BLUE}Option A - Direct Installation (Recommended):${NC}"
 echo "1. Run: ./scripts/step-020-install-rnnt-server.sh"
 echo "2. Run: ./scripts/step-030-test-system.sh"
+echo ""
+echo -e "${BLUE}Option B - Docker Deployment:${NC}"
+echo "1. Run: ./scripts/step-025-deploy-rnnt-docker.sh"
+echo "2. Run: ./scripts/step-030-test-system.sh"
+echo ""
+echo -e "${GREEN}For WebSocket streaming support (optional):${NC}"
+echo "3. Run: ./scripts/step-026-deploy-websocket.sh"
 echo ""
 
 # Update environment with completion timestamp
