@@ -218,7 +218,33 @@ ssh_cmd "sudo systemctl enable rnnt-https"
 
 echo -e "${GREEN}✅ HTTPS service created${NC}"
 
-# Step 6: Switch to HTTPS service and ensure HTTP also runs
+# Step 6: Fix WebSocket URLs in static files for HTTPS compatibility
+echo -e "${GREEN}=== Step 6: Fixing WebSocket URLs for HTTPS ===${NC}"
+
+# Backup original HTML file
+ssh_cmd "cp /opt/rnnt/static/index.html /opt/rnnt/static/index.html.backup"
+
+# Fix WebSocket URL to be protocol-aware (ws:// for HTTP, wss:// for HTTPS)
+echo "Updating WebSocket URL to be protocol-aware..."
+ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+    "sed -i \"s|const wsUrl = \\\`ws://\\\${serverHost}:8000/ws/transcribe\\\`;|const wsUrl = window.location.protocol === \\\"https:\\\" ? \\\`wss://\\\${serverHost}/ws/transcribe\\\` : \\\`ws://\\\${serverHost}:8000/ws/transcribe\\\`;|\" /opt/rnnt/static/index.html"
+
+# Update displayed WebSocket URL in the info panel
+ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+    "sed -i 's|<code id=\"ws-url\">ws://localhost:8000/ws/transcribe</code>|<code id=\"ws-url\">Auto-detected: ws:// or wss:// + current hostname</code>|' /opt/rnnt/static/index.html"
+
+# Verify the WebSocket URL fix was applied
+WS_FIX_CHECK=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+    "grep 'window.location.protocol' /opt/rnnt/static/index.html | wc -l")
+
+if [ "$WS_FIX_CHECK" -gt 0 ]; then
+    echo -e "${GREEN}✅ WebSocket URL fix applied successfully${NC}"
+else
+    echo -e "${RED}❌ Failed to apply WebSocket URL fix${NC}"
+    echo "WebSocket connections may fail on HTTPS"
+fi
+
+# Step 7: Switch to HTTPS service and ensure HTTP also runs
 echo -e "${GREEN}=== Step 6: Starting HTTPS Service ===${NC}"
 
 # Stop the current WebSocket service (if running) but keep main HTTP server
