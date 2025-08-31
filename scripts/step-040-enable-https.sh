@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e
 
-# Production RNN-T Deployment - Step 2.7: Enable HTTPS
+# Production RNN-T Deployment - Step 4.0: Enable HTTPS
 # This script adds HTTPS support to the WebSocket server using self-signed certificates
+# NVIDIA/DevOps optimized for smooth deployment experience
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -38,7 +39,7 @@ echo "Target Instance: $GPU_INSTANCE_IP"
 echo "Adding HTTPS support with self-signed certificate"
 echo ""
 
-# Function to run SSH commands
+# Function to run SSH commands with better error handling
 ssh_cmd() {
     local cmd="$*"
     echo -e "${BLUE}🔧 SSH: $cmd${NC}"
@@ -48,8 +49,43 @@ ssh_cmd() {
     fi
 }
 
-# Step 1: Generate SSL Certificate
-echo -e "${GREEN}=== Step 1: Generating SSL Certificate ===${NC}"
+# Function to check if Python module can be imported
+check_python_import() {
+    local module_name="$1"
+    local import_test=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+        "cd /opt/rnnt && source venv/bin/activate && python -c 'import $module_name; print(\"OK\")' 2>/dev/null || echo 'FAIL'")
+    echo "$import_test"
+}
+
+# Step 1: Check Prerequisites and Fix Import Issues
+echo -e "${GREEN}=== Step 1: Checking Prerequisites ===${NC}"
+
+# Check if WebSocket server exists
+WEBSOCKET_EXISTS=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+    "[ -f /opt/rnnt/rnnt-server-websocket.py ] && echo 'YES' || echo 'NO'")
+
+if [ "$WEBSOCKET_EXISTS" != "YES" ]; then
+    echo -e "${RED}❌ WebSocket server not found. Please run step-035-deploy-websocket.sh first${NC}"
+    exit 1
+fi
+
+# Fix Python import naming - create symbolic link with underscores
+echo "Fixing Python import naming for rnnt_server_websocket..."
+ssh_cmd "cd /opt/rnnt && ln -sf rnnt-server-websocket.py rnnt_server_websocket.py"
+
+# Verify the import works
+IMPORT_CHECK=$(check_python_import "rnnt_server_websocket")
+if [ "$IMPORT_CHECK" != "OK" ]; then
+    echo -e "${RED}❌ Cannot import rnnt_server_websocket module${NC}"
+    echo "Checking available files in /opt/rnnt/..."
+    ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "ls -la /opt/rnnt/*.py"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ Prerequisites checked and import issues fixed${NC}"
+
+# Step 2: Generate SSL Certificate
+echo -e "${GREEN}=== Step 2: Generating SSL Certificate ===${NC}"
 
 # Create SSL certificate on the instance
 ssh_cmd "sudo mkdir -p /opt/rnnt/ssl"
@@ -58,8 +94,8 @@ ssh_cmd "sudo chown -R ubuntu:ubuntu /opt/rnnt/ssl"
 
 echo -e "${GREEN}✅ SSL certificate generated${NC}"
 
-# Step 2: Update Security Group for HTTPS
-echo -e "${GREEN}=== Step 2: Opening HTTPS Port (443) ===${NC}"
+# Step 3: Update Security Group for HTTPS
+echo -e "${GREEN}=== Step 3: Opening HTTPS Port (443) ===${NC}"
 
 if [ -n "$SECURITY_GROUP_ID" ]; then
     # Check if HTTPS rule already exists
@@ -85,8 +121,8 @@ else
     echo -e "${YELLOW}⚠️  Security group ID not found, please open port 443 manually${NC}"
 fi
 
-# Step 3: Create HTTPS-enabled WebSocket Server
-echo -e "${GREEN}=== Step 3: Creating HTTPS WebSocket Server ===${NC}"
+# Step 4: Create HTTPS-enabled WebSocket Server
+echo -e "${GREEN}=== Step 4: Creating HTTPS WebSocket Server ===${NC}"
 
 # Create a new WebSocket server file with HTTPS support
 HTTPS_SERVER_SCRIPT='#!/opt/rnnt/venv/bin/python
@@ -146,8 +182,8 @@ ssh_cmd "chmod +x /opt/rnnt/rnnt-server-https.py"
 
 echo -e "${GREEN}✅ HTTPS server script created${NC}"
 
-# Step 4: Create HTTPS systemd service
-echo -e "${GREEN}=== Step 4: Creating HTTPS Service ===${NC}"
+# Step 5: Create HTTPS systemd service
+echo -e "${GREEN}=== Step 5: Creating HTTPS Service ===${NC}"
 
 HTTPS_SERVICE='[Unit]
 Description=Production RNN-T HTTPS WebSocket Server
@@ -156,8 +192,8 @@ Requires=network.target
 
 [Service]
 Type=simple
-User=ubuntu
-Group=ubuntu
+User=root
+Group=root
 WorkingDirectory=/opt/rnnt
 Environment=PATH=/opt/rnnt/venv/bin
 Environment=PYTHONPATH=/opt/rnnt
@@ -182,21 +218,37 @@ ssh_cmd "sudo systemctl enable rnnt-https"
 
 echo -e "${GREEN}✅ HTTPS service created${NC}"
 
-# Step 5: Switch to HTTPS service
-echo -e "${GREEN}=== Step 5: Starting HTTPS Service ===${NC}"
+# Step 6: Switch to HTTPS service and ensure HTTP also runs
+echo -e "${GREEN}=== Step 6: Starting HTTPS Service ===${NC}"
 
-# Stop the current WebSocket service
-ssh_cmd "sudo systemctl stop rnnt-websocket"
-ssh_cmd "sudo systemctl disable rnnt-websocket"
+# Stop the current WebSocket service (if running) but keep main HTTP server
+echo "Stopping standalone WebSocket service..."
+ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+    "sudo systemctl stop rnnt-websocket" 2>/dev/null || echo "WebSocket service not running"
+ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+    "sudo systemctl disable rnnt-websocket" 2>/dev/null || echo "WebSocket service not enabled"
 
 # Start HTTPS service
+echo "Starting HTTPS service (runs on port 443)..."
 ssh_cmd "sudo systemctl start rnnt-https"
 
-# Wait for service to start
-echo "Waiting for HTTPS service to initialize..."
-sleep 10
+# Ensure main HTTP server is also running (port 8000)
+echo "Ensuring HTTP server is running on port 8000..."
+HTTP_ACTIVE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+    "sudo systemctl is-active rnnt-server" 2>/dev/null || echo "inactive")
 
-# Check status
+if [ "$HTTP_ACTIVE" != "active" ]; then
+    echo "Starting HTTP server on port 8000..."
+    ssh_cmd "sudo systemctl start rnnt-server"
+    ssh_cmd "sudo systemctl enable rnnt-server"
+fi
+
+# Wait for services to initialize
+echo "Waiting for services to initialize (model loading may take 30-60 seconds)..."
+sleep 15
+
+# Check HTTPS service status with detailed logging
+echo "Checking HTTPS service status..."
 SERVICE_STATUS=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
     "sudo systemctl is-active rnnt-https" 2>/dev/null || echo "failed")
 
@@ -204,81 +256,165 @@ if [ "$SERVICE_STATUS" = "active" ]; then
     echo -e "${GREEN}✅ HTTPS service is running${NC}"
 else
     echo -e "${YELLOW}⚠️  HTTPS service status: $SERVICE_STATUS${NC}"
-    echo "Checking if HTTP fallback is working..."
+    echo "Checking HTTPS service logs for troubleshooting..."
+    ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+        "sudo journalctl -u rnnt-https -n 10 --no-pager" || echo "Could not retrieve logs"
     
-    # Test HTTP fallback
-    HTTP_TEST=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
-        "curl -s --connect-timeout 5 http://localhost:8000/health | jq -r '.status' 2>/dev/null || echo 'failed'")
-    
-    if [ "$HTTP_TEST" = "healthy" ]; then
-        echo -e "${GREEN}✅ HTTP fallback is working${NC}"
-    else
-        echo -e "${RED}❌ Both HTTPS and HTTP failed${NC}"
+    if [ "$SERVICE_STATUS" = "failed" ]; then
+        echo -e "${RED}❌ HTTPS service failed to start${NC}"
         exit 1
     fi
 fi
 
-# Step 6: Test HTTPS endpoint
-echo -e "${GREEN}=== Step 6: Testing HTTPS Access ===${NC}"
+# Check HTTP service status
+HTTP_STATUS=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+    "sudo systemctl is-active rnnt-server" 2>/dev/null || echo "failed")
 
-# Test HTTPS (may fail due to self-signed cert)
-echo "Testing HTTPS endpoint..."
-HTTPS_TEST=$(curl -k -s --connect-timeout 5 https://"$GPU_INSTANCE_IP"/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo 'failed')
+if [ "$HTTP_STATUS" = "active" ]; then
+    echo -e "${GREEN}✅ HTTP service is running${NC}"
+else
+    echo -e "${YELLOW}⚠️  HTTP service status: $HTTP_STATUS${NC}"
+fi
 
-if [ "$HTTPS_TEST" = "healthy" ]; then
-    echo -e "${GREEN}✅ HTTPS endpoint responding${NC}"
+# Step 7: Test endpoints with retry logic
+echo -e "${GREEN}=== Step 7: Testing HTTPS and HTTP Access ===${NC}"
+
+# Function to test endpoint with retry logic
+test_endpoint() {
+    local url="$1"
+    local name="$2"
+    local max_attempts=3
+    local attempt=1
+    
+    echo "Testing $name endpoint: $url"
+    
+    while [ $attempt -le $max_attempts ]; do
+        echo "  Attempt $attempt/$max_attempts..."
+        
+        if [[ "$url" =~ ^https:// ]]; then
+            result=$(curl -k -s --connect-timeout 10 --max-time 30 "$url/health" 2>/dev/null | jq -r '.status' 2>/dev/null || echo 'failed')
+        else
+            result=$(curl -s --connect-timeout 10 --max-time 30 "$url/health" 2>/dev/null | jq -r '.status' 2>/dev/null || echo 'failed')
+        fi
+        
+        if [ "$result" = "healthy" ]; then
+            echo -e "  ${GREEN}✅ $name endpoint responding${NC}"
+            return 0
+        elif [ "$result" = "loading" ]; then
+            echo -e "  ${YELLOW}⏳ Model still loading, waiting...${NC}"
+            sleep 15
+        else
+            echo -e "  ${YELLOW}⚠️  Attempt $attempt failed (response: $result)${NC}"
+            sleep 5
+        fi
+        
+        attempt=$((attempt + 1))
+    done
+    
+    echo -e "  ${RED}❌ $name endpoint not responding after $max_attempts attempts${NC}"
+    return 1
+}
+
+# Test HTTPS first
+if test_endpoint "https://$GPU_INSTANCE_IP" "HTTPS"; then
     HTTPS_WORKING=true
 else
-    echo -e "${YELLOW}⚠️  HTTPS test failed, checking HTTP...${NC}"
     HTTPS_WORKING=false
 fi
 
-# Test HTTP as backup
-HTTP_TEST=$(curl -s --connect-timeout 5 http://"$GPU_INSTANCE_IP":8000/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo 'failed')
-
-if [ "$HTTP_TEST" = "healthy" ]; then
-    echo -e "${GREEN}✅ HTTP endpoint responding${NC}"
+# Test HTTP
+if test_endpoint "http://$GPU_INSTANCE_IP:8000" "HTTP"; then
     HTTP_WORKING=true
 else
-    echo -e "${RED}❌ HTTP endpoint not responding${NC}"
     HTTP_WORKING=false
 fi
 
-# Final summary
+# Final summary and validation
 echo ""
 echo -e "${GREEN}🎉 HTTPS Setup Complete!${NC}"
 echo "================================================================"
 
+# Service status summary
+echo -e "${BLUE}📊 Service Status Summary:${NC}"
 if [ "$HTTPS_WORKING" = true ]; then
-    echo -e "${GREEN}🔒 HTTPS URL: https://$GPU_INSTANCE_IP${NC}"
-    echo -e "${GREEN}🔒 Demo UI: https://$GPU_INSTANCE_IP/static/index.html${NC}"
-    echo "   (You'll get a security warning - click 'Advanced' → 'Proceed')"
+    echo -e "${GREEN}  ✅ HTTPS Service: WORKING (Port 443)${NC}"
+    echo -e "${GREEN}     🔒 URL: https://$GPU_INSTANCE_IP${NC}"
+    echo -e "${GREEN}     🔒 Demo: https://$GPU_INSTANCE_IP/static/index.html${NC}"
 fi
 
 if [ "$HTTP_WORKING" = true ]; then
-    echo -e "${BLUE}🌐 HTTP URL: http://$GPU_INSTANCE_IP:8000${NC}"
-    echo -e "${BLUE}🌐 Demo UI: http://$GPU_INSTANCE_IP:8000/static/index.html${NC}"
+    echo -e "${GREEN}  ✅ HTTP Service: WORKING (Port 8000)${NC}"
+    echo -e "${GREEN}     🌐 URL: http://$GPU_INSTANCE_IP:8000${NC}"
+    echo -e "${GREEN}     🌐 Demo: http://$GPU_INSTANCE_IP:8000/static/index.html${NC}"
+fi
+
+if [ "$HTTPS_WORKING" = false ] && [ "$HTTP_WORKING" = false ]; then
+    echo -e "${RED}  ❌ Both services failed - troubleshooting required${NC}"
 fi
 
 echo ""
-echo -e "${YELLOW}📝 Important Notes:${NC}"
-echo "• Self-signed certificate will show browser warnings"
-echo "• Click 'Advanced' → 'Proceed to site' to bypass warnings"
-echo "• For production, use Let's Encrypt or a real SSL certificate"
-echo ""
 
+# Browser compatibility note
 if [ "$HTTPS_WORKING" = true ]; then
-    echo -e "${GREEN}✅ Microphone access should now work in browsers!${NC}"
+    echo -e "${GREEN}🎤 Microphone Access:${NC}"
+    echo -e "${GREEN}  ✅ Should work in all browsers via HTTPS${NC}"
+    echo -e "${YELLOW}  ⚠️  You'll see a security warning (self-signed certificate)${NC}"
+    echo -e "${YELLOW}  💡 Click 'Advanced' → 'Proceed to [IP]' to bypass${NC}"
 else
-    echo -e "${YELLOW}⚠️  HTTPS not working, microphone access still limited to localhost${NC}"
+    echo -e "${YELLOW}🎤 Microphone Access:${NC}"
+    echo -e "${YELLOW}  ⚠️  Limited to localhost/HTTP only${NC}"
+    echo -e "${YELLOW}  📱 Won't work on mobile or remote browsers${NC}"
 fi
 
 echo ""
-echo -e "${YELLOW}📜 Next Steps:${NC}"
-echo "1. Open: https://$GPU_INSTANCE_IP/static/index.html"
-echo "2. Accept the security warning (self-signed certificate)"
-echo "3. Grant microphone permission when prompted"
-echo "4. Test real-time transcription!"
+echo -e "${BLUE}🚀 Quick Start Guide:${NC}"
+if [ "$HTTPS_WORKING" = true ]; then
+    echo -e "${GREEN}1. For MICROPHONE access (recommended):${NC}"
+    echo "   • Open: https://$GPU_INSTANCE_IP/static/index.html"
+    echo "   • Click through browser security warning"
+    echo "   • Grant microphone permission"
+    echo "   • Start talking to test real-time transcription"
+    echo ""
+fi
+
+if [ "$HTTP_WORKING" = true ]; then
+    echo -e "${BLUE}2. For FILE UPLOAD testing:${NC}"
+    echo "   • Use: http://$GPU_INSTANCE_IP:8000/static/index.html"
+    echo "   • Upload audio files (.wav, .mp3, .m4a)"
+    echo "   • No microphone access on this URL"
+    echo ""
+fi
+
+echo -e "${YELLOW}📋 API Testing:${NC}"
+echo "# Health check:"
+echo "curl -k https://$GPU_INSTANCE_IP/health"
+echo ""
+echo "# File transcription:"
+echo "curl -k -X POST https://$GPU_INSTANCE_IP/transcribe/file \\"
+echo "  -F 'file=@your-audio.wav' -F 'language=en'"
+echo ""
+
+# Troubleshooting section
+if [ "$HTTPS_WORKING" = false ] || [ "$HTTP_WORKING" = false ]; then
+    echo -e "${RED}🔧 Troubleshooting:${NC}"
+    echo ""
+    echo "If services aren't responding:"
+    echo "• Check service logs: ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP 'sudo journalctl -u rnnt-https -f'"
+    echo "• Restart services: ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP 'sudo systemctl restart rnnt-https rnnt-server'"
+    echo "• Check GPU memory: ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP 'nvidia-smi'"
+    echo ""
+    echo "Common issues:"
+    echo "• Model loading can take 30-60 seconds on first start"
+    echo "• GPU out of memory - restart services to reload model"
+    echo "• Network issues - check security group has ports 443 and 8000 open"
+    echo ""
+fi
+
+echo -e "${BLUE}📝 Production Notes:${NC}"
+echo "• Self-signed certificates show security warnings"
+echo "• For production, use Let's Encrypt: certbot --nginx"
+echo "• Monitor with: sudo systemctl status rnnt-https rnnt-server"
+echo "• Logs location: sudo journalctl -u rnnt-https -u rnnt-server"
 
 # Update .env with HTTPS status
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
