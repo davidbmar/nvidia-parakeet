@@ -93,18 +93,67 @@ fi
 
 SSH_KEY_FILE="$PROJECT_ROOT/$KEY_NAME.pem"
 
+# Check if key file exists and validate it
 if [ -f "$SSH_KEY_FILE" ]; then
-    echo -e "${YELLOW}⚠️  SSH key already exists: $SSH_KEY_FILE${NC}"
-else
-    echo "Creating key pair: $KEY_NAME"
-    aws ec2 create-key-pair \
+    if [ ! -s "$SSH_KEY_FILE" ]; then
+        echo -e "${RED}❌ ERROR: SSH key file exists but is empty (0 bytes): $SSH_KEY_FILE${NC}"
+        echo -e "${YELLOW}   This usually happens when key creation failed previously.${NC}"
+        echo -e "${YELLOW}   Removing empty file and attempting to recreate...${NC}"
+        rm -f "$SSH_KEY_FILE"
+    elif ! ssh-keygen -l -f "$SSH_KEY_FILE" >/dev/null 2>&1; then
+        echo -e "${RED}❌ ERROR: SSH key file exists but appears corrupted: $SSH_KEY_FILE${NC}"
+        echo -e "${YELLOW}   The file is not a valid SSH private key.${NC}"
+        echo -e "${YELLOW}   Please remove the file manually and run the script again.${NC}"
+        exit 1
+    else
+        echo -e "${GREEN}✅ Found valid existing SSH key file - REUSING: $SSH_KEY_FILE${NC}"
+        chmod 600 "$SSH_KEY_FILE"
+    fi
+fi
+
+# Create key if file doesn't exist
+if [ ! -f "$SSH_KEY_FILE" ]; then
+    echo -e "${BLUE}🔧 Creating new SSH key pair: $KEY_NAME${NC}"
+    
+    # Check if key exists in AWS first
+    if aws ec2 describe-key-pairs --key-names "$KEY_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  Key pair already exists in AWS but local file is missing${NC}"
+        echo -e "${YELLOW}   Deleting AWS key pair to recreate with local file...${NC}"
+        aws ec2 delete-key-pair --key-name "$KEY_NAME" --region "$AWS_REGION"
+        echo -e "${GREEN}✅ Deleted existing AWS key pair${NC}"
+    fi
+    
+    # Create new key pair with proper error handling
+    echo "   Creating key pair in AWS..."
+    KEY_MATERIAL=$(aws ec2 create-key-pair \
         --key-name "$KEY_NAME" \
         --region "$AWS_REGION" \
         --query 'KeyMaterial' \
-        --output text > "$SSH_KEY_FILE"
+        --output text 2>&1)
     
-    chmod 600 "$SSH_KEY_FILE"
-    echo -e "${GREEN}✅ SSH key created: $SSH_KEY_FILE${NC}"
+    if [ $? -eq 0 ] && [ -n "$KEY_MATERIAL" ] && [[ ! "$KEY_MATERIAL" =~ "error" ]]; then
+        echo "$KEY_MATERIAL" > "$SSH_KEY_FILE"
+        chmod 600 "$SSH_KEY_FILE"
+        
+        # Verify the key was written correctly
+        if [ -s "$SSH_KEY_FILE" ] && ssh-keygen -l -f "$SSH_KEY_FILE" >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ SSH key created successfully: $SSH_KEY_FILE${NC}"
+        else
+            echo -e "${RED}❌ ERROR: Failed to write valid SSH key to file${NC}"
+            rm -f "$SSH_KEY_FILE"
+            aws ec2 delete-key-pair --key-name "$KEY_NAME" --region "$AWS_REGION" >/dev/null 2>&1
+            exit 1
+        fi
+    else
+        echo -e "${RED}❌ ERROR: Failed to create SSH key pair in AWS${NC}"
+        if [[ "$KEY_MATERIAL" =~ "InvalidKeyPair.Duplicate" ]]; then
+            echo -e "${YELLOW}   Key pair already exists in AWS. Try running the destroy script first.${NC}"
+        else
+            echo -e "${YELLOW}   AWS Error: $KEY_MATERIAL${NC}"
+        fi
+        rm -f "$SSH_KEY_FILE"  # Remove any empty file created
+        exit 1
+    fi
 fi
 
 # Update .env with key file path
