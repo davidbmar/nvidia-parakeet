@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-# Production RNN-T Deployment - Step 1.5: Create IAM Role for S3 Access
-# This script creates an IAM role that allows EC2 instances to access the S3 bucket
-# without needing to store AWS credentials on the instance (more secure)
+# Production RNN-T Deployment - Step 1.5: Enable Worker S3 Access
+# This script creates an IAM role that allows the EC2 worker instance to access
+# the S3 bucket securely without storing AWS credentials on the instance
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -34,7 +34,7 @@ for var in "${required_vars[@]}"; do
     fi
 done
 
-echo -e "${BLUE}🚀 Production RNN-T Deployment - IAM Role Setup${NC}"
+echo -e "${BLUE}🚀 Production RNN-T Deployment - Enable Worker S3 Access${NC}"
 echo "================================================================"
 echo "AWS Region: $AWS_REGION"
 echo "Account ID: $AWS_ACCOUNT_ID"
@@ -49,7 +49,7 @@ INSTANCE_PROFILE_NAME="${INSTANCE_PROFILE_NAME:-rnnt-instance-profile}"
 
 echo -e "${GREEN}=== Step 1: Creating IAM Role ===${NC}"
 
-# Check if role already exists
+# Check if role already exists (IAM is global, no region needed)
 if aws iam get-role --role-name "$IAM_ROLE_NAME" >/dev/null 2>&1; then
     echo -e "${YELLOW}⚠️  IAM role already exists: $IAM_ROLE_NAME${NC}"
     ROLE_EXISTS=true
