@@ -91,18 +91,18 @@ while true; do
             echo -e "${GREEN}✅ You chose: Direct Installation${NC}"
             echo ""
             echo -e "${BLUE}📋 Next steps:${NC}"
-            echo "1. Run: ./scripts/step-020-direct-install-server.sh"
-            echo "2. Run: ./scripts/step-026-deploy-websocket.sh (optional)"
-            echo "3. Run: ./scripts/step-030-test-system.sh"
+            echo "1. Run: ./scripts/step-025-direct-install-server.sh"
+            echo "2. Run: ./scripts/step-035-deploy-websocket.sh (optional)"
+            echo "3. Run: ./scripts/step-050-test-system.sh"
             echo ""
             echo -e "${YELLOW}💡 Ready to proceed?${NC}"
             read -p "Run the direct installation now? (Y/n): " -n 1 proceed
             echo
             if [[ "$proceed" =~ ^[Yy]$ ]] || [ -z "$proceed" ]; then
                 echo -e "${GREEN}🚀 Starting direct installation...${NC}"
-                exec "$SCRIPT_DIR/step-020-direct-install-server.sh"
+                exec "$SCRIPT_DIR/step-025-direct-install-server.sh"
             else
-                echo "Run ./scripts/step-020-direct-install-server.sh when ready"
+                echo "Run ./scripts/step-025-direct-install-server.sh when ready"
             fi
             break
             ;;
@@ -111,18 +111,18 @@ while true; do
             echo -e "${CYAN}✅ You chose: Docker Container${NC}"
             echo ""
             echo -e "${BLUE}📋 Next steps:${NC}"
-            echo "1. Run: ./scripts/step-020-docker-deploy.sh"
-            echo "2. Run: ./scripts/step-026-deploy-websocket.sh (optional)"
-            echo "3. Run: ./scripts/step-030-test-system.sh"
+            echo "1. Run: ./scripts/step-030-docker-deploy.sh"
+            echo "2. Run: ./scripts/step-035-deploy-websocket.sh (optional)"
+            echo "3. Run: ./scripts/step-050-test-system.sh"
             echo ""
             echo -e "${YELLOW}💡 Ready to proceed?${NC}"
             read -p "Run the Docker deployment now? (Y/n): " -n 1 proceed
             echo
             if [[ "$proceed" =~ ^[Yy]$ ]] || [ -z "$proceed" ]; then
                 echo -e "${CYAN}🚀 Starting Docker deployment...${NC}"
-                exec "$SCRIPT_DIR/step-020-docker-deploy.sh"
+                exec "$SCRIPT_DIR/step-030-docker-deploy.sh"
             else
-                echo "Run ./scripts/step-020-docker-deploy.sh when ready"
+                echo "Run ./scripts/step-030-docker-deploy.sh when ready"
             fi
             break
             ;;
