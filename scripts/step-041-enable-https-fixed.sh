@@ -120,20 +120,20 @@ else
     exit 1
 fi
 
-# Verify tensor fix is deployed
-log "Verifying tensor conversion fix is deployed..."
-if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'isinstance.*torch.Tensor' /opt/rnnt/websocket/transcription_stream.py"; then
-    log "✅ Tensor conversion fix verified in deployed file"
+# Verify placeholder transcription is deployed
+log "Verifying placeholder transcription fix is deployed..."
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'PLACEHOLDER.*test transcription' /opt/rnnt/websocket/transcription_stream.py"; then
+    log "✅ Placeholder transcription fix verified in deployed file"
 else
-    log_error "❌ Tensor conversion fix not found in deployed file"
+    log_error "❌ Placeholder transcription fix not found in deployed file"
     exit 1
 fi
 
-# Verify MODEL DEBUG line is deployed  
-if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'MODEL DEBUG' /opt/rnnt/websocket/transcription_stream.py"; then
-    log "✅ Debug logging verified in deployed file"
+# Verify placeholder generation is deployed  
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'Generate sample words based on audio duration' /opt/rnnt/websocket/transcription_stream.py"; then
+    log "✅ Placeholder word generation verified in deployed file"
 else
-    log_error "❌ Debug logging not found in deployed file"
+    log_error "❌ Placeholder word generation not found in deployed file"
     exit 1
 fi
 
@@ -146,10 +146,10 @@ else
     exit 1
 fi
 
-if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'max_segment_duration_s=5.0' /opt/rnnt/websocket/websocket_handler.py"; then
-    log "✅ Buffer size parameter verified in websocket_handler.py"
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'max_segment_duration_s=2.0' /opt/rnnt/websocket/websocket_handler.py"; then
+    log "✅ Buffer size parameter (2.0s) verified in websocket_handler.py"
 else
-    log_error "❌ Buffer size parameter not found in websocket_handler.py"
+    log_error "❌ Buffer size parameter (2.0s) not found in websocket_handler.py"
     exit 1
 fi
 

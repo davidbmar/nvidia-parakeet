@@ -51,7 +51,7 @@
             <div class="info-grid">
                 <div class="info-item">
                     <strong>WebSocket URL:</strong>
-                    <code id="ws-url">ws://localhost:8000/ws/transcribe</code>
+                    <code id="ws-url">Detecting...</code>
                 </div>
                 <div class="info-item">
                     <strong>Audio Format:</strong>
@@ -114,12 +114,7 @@ ws.send(JSON.stringify({
         let ui = null;
         let isRecording = false;
         
-        // Get server URL
-        const serverHost = window.location.hostname;
-        const wsUrl = `ws://${serverHost}:8000/ws/transcribe`;
-        document.getElementById('ws-url').textContent = wsUrl;
-        
-        // Initialize UI
+        // Initialize UI first
         ui = new TranscriptionUI({
             transcriptElement: document.getElementById('transcript'),
             partialElement: document.getElementById('partial-transcript'),
@@ -128,13 +123,14 @@ ws.send(JSON.stringify({
             audioLevelElement: document.getElementById('audio-level')
         });
         
-        // Initialize WebSocket
+        // Initialize WebSocket with automatic protocol detection
         wsClient = new TranscriptionWebSocket({
-            url: wsUrl,
             onConnect: () => {
                 ui.updateStatus('Connected', 'success');
                 document.getElementById('status-indicator').className = 'status-indicator connected';
                 document.getElementById('recordBtn').disabled = false;
+                // Update displayed URL with actual WebSocket URL
+                document.getElementById('ws-url').textContent = wsClient.url;
             },
             onDisconnect: () => {
                 ui.updateStatus('Disconnected', 'error');
@@ -155,6 +151,9 @@ ws.send(JSON.stringify({
                 console.error('WebSocket error:', error);
             }
         });
+        
+        // Update displayed WebSocket URL immediately
+        document.getElementById('ws-url').textContent = wsClient.url;
         
         // Initialize audio recorder
         recorder = new AudioRecorder({

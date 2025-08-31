@@ -14,12 +14,37 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 # Import original server components but avoid route conflicts
-from rnnt_server import (
-    app, logger, RNNT_SERVER_PORT, RNNT_SERVER_HOST, RNNT_MODEL_SOURCE,
-    MODEL_LOADED, MODEL_LOAD_TIME, LOG_LEVEL, DEV_MODE,
-    asr_model, load_model, health_check, transcribe_file, transcribe_s3,
-    torch, uvicorn
-)
+try:
+    from rnnt_server import (
+        app, logger, RNNT_SERVER_PORT, RNNT_SERVER_HOST, RNNT_MODEL_SOURCE,
+        MODEL_LOADED, MODEL_LOAD_TIME, LOG_LEVEL, DEV_MODE,
+        asr_model, load_model, health_check, transcribe_file, transcribe_s3,
+        torch, uvicorn
+    )
+except ImportError:
+    # Try relative import if in docker directory
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("rnnt_server", "rnnt-server.py")
+    rnnt_server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(rnnt_server)
+    
+    # Import needed components
+    app = rnnt_server.app
+    logger = rnnt_server.logger
+    RNNT_SERVER_PORT = rnnt_server.RNNT_SERVER_PORT
+    RNNT_SERVER_HOST = rnnt_server.RNNT_SERVER_HOST
+    RNNT_MODEL_SOURCE = rnnt_server.RNNT_MODEL_SOURCE
+    MODEL_LOADED = rnnt_server.MODEL_LOADED
+    MODEL_LOAD_TIME = rnnt_server.MODEL_LOAD_TIME
+    LOG_LEVEL = rnnt_server.LOG_LEVEL
+    DEV_MODE = rnnt_server.DEV_MODE
+    asr_model = rnnt_server.asr_model
+    load_model = rnnt_server.load_model
+    health_check = rnnt_server.health_check
+    transcribe_file = rnnt_server.transcribe_file
+    transcribe_s3 = rnnt_server.transcribe_s3
+    torch = rnnt_server.torch
+    uvicorn = rnnt_server.uvicorn
 
 # Import WebSocket components
 from websocket.websocket_handler import WebSocketHandler
@@ -42,9 +67,17 @@ async def startup_event_enhanced():
     # Load model on startup
     await load_model()
     
-    # Initialize WebSocket handler
+    # Import the global asr_model after loading
+    from rnnt_server import asr_model
+    
+    # Verify model is loaded
+    if asr_model is None:
+        logger.error("❌ ASR model failed to load - WebSocket transcription will not work")
+        raise RuntimeError("ASR model not loaded")
+    
+    # Initialize WebSocket handler with loaded model
     ws_handler = WebSocketHandler(asr_model)
-    logger.info("✅ WebSocket handler initialized")
+    logger.info("✅ WebSocket handler initialized with loaded model")
 
 # Remove the original root route to avoid conflicts
 original_routes = app.routes[:]
