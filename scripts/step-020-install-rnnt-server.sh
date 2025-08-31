@@ -82,34 +82,99 @@ ssh_cmd() {
 # Function to wait for package manager lock to be released
 wait_for_apt_lock() {
     echo -e "${YELLOW}⏳ Checking for package manager availability...${NC}"
-    local max_wait=300  # 5 minutes maximum
+    local max_wait=600  # 10 minutes maximum
+    local max_stuck=120  # 2 minutes without progress = likely stuck
     local waited=0
+    local last_process=""
+    local last_activity=""
+    local stuck_time=0
     
     while [ $waited -lt $max_wait ]; do
-        # Check if any apt/dpkg process is running
-        if ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
-           "sudo lsof /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock 2>/dev/null | grep -q ." 2>/dev/null; then
+        # Check what's holding the lock
+        LOCK_INFO=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+            "sudo lsof /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>/dev/null | grep -v COMMAND | head -1" 2>/dev/null || echo "")
+        
+        if [ -n "$LOCK_INFO" ]; then
+            # Extract process name and PID
+            PROCESS_NAME=$(echo "$LOCK_INFO" | awk '{print $1}')
+            PROCESS_PID=$(echo "$LOCK_INFO" | awk '{print $2}')
             
-            if [ $waited -eq 0 ]; then
-                echo -e "${YELLOW}⚠️  Package manager is locked (likely unattended-upgrades running)${NC}"
-                echo -e "${YELLOW}   Waiting for it to complete (up to 5 minutes)...${NC}"
+            # Check for activity - look at CPU usage and dpkg status
+            ACTIVITY_CHECK=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+                "ps aux | grep -E \"PID.*${PROCESS_PID}|${PROCESS_PID}.*\" | grep -v grep | awk '{print \$3}' | head -1" 2>/dev/null || echo "0")
+            
+            # Get current dpkg status to see if packages are being processed
+            DPKG_STATUS=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+                "sudo tail -1 /var/log/dpkg.log 2>/dev/null | cut -c1-100" 2>/dev/null || echo "")
+            
+            # Check if anything changed
+            CURRENT_ACTIVITY="${DPKG_STATUS}"
+            if [ "$CURRENT_ACTIVITY" = "$last_activity" ]; then
+                stuck_time=$((stuck_time + 5))
+            else
+                stuck_time=0
+                last_activity="$CURRENT_ACTIVITY"
             fi
             
-            echo -n "   Waiting... ($waited seconds elapsed)"
-            sleep 10
-            waited=$((waited + 10))
-            echo -ne "\r\033[K"  # Clear the line
+            if [ "$last_process" != "$PROCESS_NAME-$PROCESS_PID" ]; then
+                echo -e "\n${YELLOW}⚠️  Package manager is locked by: ${PROCESS_NAME} (PID: ${PROCESS_PID})${NC}"
+                last_process="$PROCESS_NAME-$PROCESS_PID"
+                
+                # Check if it's unattended-upgrades
+                if [[ "$PROCESS_NAME" == *"unattended"* ]]; then
+                    # Count how many packages need updating
+                    PACKAGE_COUNT=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+                        "grep 'Packages that will be upgraded:' /var/log/unattended-upgrades/unattended-upgrades.log 2>/dev/null | tail -1 | wc -w" 2>/dev/null || echo "0")
+                    if [ "$PACKAGE_COUNT" -gt 10 ]; then
+                        echo -e "${YELLOW}   Installing security updates ($(($PACKAGE_COUNT-5)) packages)...${NC}"
+                        echo -e "${BLUE}   This may take 5-10 minutes for a fresh instance${NC}"
+                    fi
+                fi
+            fi
+            
+            # Show current package being processed if available
+            if [ -n "$DPKG_STATUS" ] && [ "$stuck_time" -eq 0 ]; then
+                CURRENT_PKG=$(echo "$DPKG_STATUS" | grep -oE "(install|configure|unpack) [a-z0-9-]+" | head -1 || echo "")
+                if [ -n "$CURRENT_PKG" ]; then
+                    echo -ne "\r   Processing: $CURRENT_PKG... ($(($waited/60))m $(($waited%60))s elapsed)     "
+                fi
+            fi
+            
+            # Check if process seems stuck
+            if [ $stuck_time -ge $max_stuck ]; then
+                echo -e "\n${RED}⚠️  Process appears stuck - no activity for 2 minutes${NC}"
+                echo -e "${YELLOW}   Last status: $DPKG_STATUS${NC}"
+                echo -e "${YELLOW}   Options:${NC}"
+                echo "   1. Wait a bit longer (sometimes dpkg is slow)"
+                echo "   2. Kill the process: sudo kill -9 $PROCESS_PID"
+                echo "   3. Reboot and retry: aws ec2 reboot-instances --instance-ids $GPU_INSTANCE_ID"
+                
+                read -t 30 -p "   Continue waiting? (Y/n, auto-continues in 30s): " -n 1 response || response="y"
+                echo
+                if [[ ! "$response" =~ ^[Yy]$ ]] && [ -n "$response" ]; then
+                    return 1
+                fi
+                stuck_time=0  # Reset stuck counter if user wants to continue
+            fi
+            
+            # Show progress indicator
+            if [ $stuck_time -gt 30 ]; then
+                echo -ne "\r   ⚠️  No activity for ${stuck_time}s ($(($waited/60))m total)        "
+            fi
+            
+            sleep 5
+            waited=$((waited + 5))
         else
             if [ $waited -gt 0 ]; then
-                echo -e "\n${GREEN}✅ Package manager is now available${NC}"
+                echo -e "\n${GREEN}✅ Package manager is now available!${NC}"
+            else
+                echo -e "${GREEN}✅ Package manager is available${NC}"
             fi
             return 0
         fi
     done
     
-    echo -e "\n${RED}❌ Package manager still locked after 5 minutes${NC}"
-    echo -e "${YELLOW}   You can manually fix this by running:${NC}"
-    echo "   ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP 'sudo killall apt apt-get dpkg unattended-upgrade'"
+    echo -e "\n${RED}❌ Package manager still locked after 10 minutes${NC}"
     return 1
 }
 
