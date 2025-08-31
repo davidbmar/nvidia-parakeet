@@ -184,9 +184,9 @@ echo ""
 
 # Auto-run next script function
 read -p "Would you like to automatically run step-032-test-websocket.sh now? (y/N): " -r
-if [[ \$REPLY =~ ^[Yy]\$ ]]; then
+if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo -e "${BLUE}🧪 Running comprehensive tests automatically...${NC}"
-    exec "\$SCRIPT_DIR/step-032-test-websocket.sh"
+    exec "$SCRIPT_DIR/step-032-test-websocket.sh"
 fi
 
 # Clean up
