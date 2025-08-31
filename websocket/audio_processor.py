@@ -100,15 +100,12 @@ class AudioProcessor:
         # Detect voice activity
         has_voice = self._detect_voice_activity(audio_array)
         
-        # Add to current segment (convert to list to maintain compatibility)
-        self.current_segment.extend(audio_array.tolist())
-        
-        # Check for end of segment
+        # Check for end of segment BEFORE adding more audio
         is_end_of_segment = False
         
-        # Force segmentation if max duration reached (prevents CUDA OOM)
-        if len(self.current_segment) >= self.max_segment_samples:
-            logger.info(f"🔄 Force segmenting audio: {len(self.current_segment)} samples (max: {self.max_segment_samples})")
+        # Force segmentation if adding this chunk would exceed max duration (prevents CUDA OOM)
+        if len(self.current_segment) + len(audio_array) >= self.max_segment_samples:
+            logger.info(f"🔄 Force segmenting audio: current={len(self.current_segment)}, adding={len(audio_array)}, max={self.max_segment_samples}")
             is_end_of_segment = True
         elif has_voice:
             self.silence_counter = 0
@@ -116,6 +113,10 @@ class AudioProcessor:
             self.silence_counter += 1
             if self.silence_counter >= self.silence_chunks and len(self.current_segment) > 0:
                 is_end_of_segment = True
+        
+        # Add to current segment (convert to list to maintain compatibility)
+        if not is_end_of_segment:
+            self.current_segment.extend(audio_array.tolist())
         
         # Return current audio and segment status
         return audio_array, is_end_of_segment
