@@ -388,32 +388,115 @@ else
     exit 1
 fi
 
-# Step 10: Health Check
+# Step 10: Health Check with Progress Monitoring
 echo -e "${GREEN}=== Step 10: Health Check ===${NC}"
-echo -e "${YELLOW}⏳ Testing server endpoints...${NC}"
+echo -e "${YELLOW}⏳ Waiting for server to initialize...${NC}"
 
-# Wait a bit more for full initialization
-sleep 15
+# Function to check server health and show progress
+check_server_health() {
+    local max_wait=180  # 3 minutes maximum
+    local check_interval=5
+    local waited=0
+    local last_status=""
+    
+    while [ $waited -lt $max_wait ]; do
+        # Check if service is running
+        SERVICE_STATUS=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+            "sudo systemctl is-active rnnt-server 2>/dev/null" || echo "inactive")
+        
+        if [ "$SERVICE_STATUS" != "active" ]; then
+            echo -e "\r   Service status: ${RED}$SERVICE_STATUS${NC} (${waited}s elapsed)"
+            sleep $check_interval
+            waited=$((waited + check_interval))
+            continue
+        fi
+        
+        # Try to get health status
+        HEALTH_RESPONSE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+            "curl -s --connect-timeout 3 http://localhost:8000/health 2>/dev/null" || echo "")
+        
+        if [ -n "$HEALTH_RESPONSE" ] && [[ "$HEALTH_RESPONSE" == *"status"* ]]; then
+            # Parse status from JSON response
+            if [[ "$HEALTH_RESPONSE" == *'"status":"healthy"'* ]]; then
+                echo -e "\n${GREEN}✅ Server is healthy and ready!${NC}"
+                
+                # Show model info if available
+                if [[ "$HEALTH_RESPONSE" == *"model_loaded"* ]]; then
+                    MODEL_STATUS=$(echo "$HEALTH_RESPONSE" | grep -o '"model_loaded":[^,]*' | cut -d':' -f2)
+                    echo -e "${GREEN}✅ Model loaded: $MODEL_STATUS${NC}"
+                fi
+                
+                # Show GPU info if available
+                if [[ "$HEALTH_RESPONSE" == *"gpu_available"* ]]; then
+                    GPU_STATUS=$(echo "$HEALTH_RESPONSE" | grep -o '"gpu_available":[^,]*' | cut -d':' -f2)
+                    echo -e "${GREEN}✅ GPU available: $GPU_STATUS${NC}"
+                fi
+                
+                return 0
+                
+            elif [[ "$HEALTH_RESPONSE" == *'"status":"loading"'* ]] || [[ "$HEALTH_RESPONSE" == *'"status":"initializing"'* ]]; then
+                STATUS_MSG="Server initializing (loading model)"
+                
+            else
+                # Try to extract any status information
+                STATUS_MSG="Server responding but status unclear"
+            fi
+        else
+            # Check server logs for more info about what's happening
+            LOG_INFO=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+                "sudo journalctl -u rnnt-server --no-pager -n 1 --since '30 seconds ago' 2>/dev/null | grep -oE '(Loading|Downloading|Initializing|Starting|Model|Error).*' | head -1" || echo "")
+            
+            if [ -n "$LOG_INFO" ]; then
+                STATUS_MSG="$LOG_INFO"
+            else
+                STATUS_MSG="Server starting up"
+            fi
+        fi
+        
+        # Update status if it changed
+        if [ "$STATUS_MSG" != "$last_status" ]; then
+            echo -e "\n   ${BLUE}Status: $STATUS_MSG${NC}"
+            last_status="$STATUS_MSG"
+        fi
+        
+        # Show progress
+        local dots=$((waited / check_interval % 4))
+        local dot_str=""
+        for ((i=0; i<dots; i++)); do dot_str="$dot_str."; done
+        printf "\r   Waiting%s (${waited}s elapsed)    " "$dot_str"
+        
+        sleep $check_interval
+        waited=$((waited + check_interval))
+    done
+    
+    echo -e "\n${RED}❌ Server did not become healthy within 3 minutes${NC}"
+    echo -e "${YELLOW}   Final response: $HEALTH_RESPONSE${NC}"
+    echo -e "${YELLOW}   Check server logs: ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP 'sudo journalctl -u rnnt-server -f'${NC}"
+    return 1
+}
 
-# Test root endpoint
-echo "Testing root endpoint..."
-ROOT_RESPONSE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "curl -s http://localhost:8000/ || echo 'failed'")
-
-if [[ "$ROOT_RESPONSE" == *"Production RNN-T"* ]]; then
-    echo -e "${GREEN}✅ Root endpoint responding${NC}"
+# Run the health check with progress monitoring
+if check_server_health; then
+    # Test root endpoint to verify it's working
+    echo -e "${BLUE}🔍 Testing API endpoints...${NC}"
+    ROOT_RESPONSE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" \
+        "curl -s --connect-timeout 10 http://localhost:8000/ 2>/dev/null || echo 'failed'")
+    
+    if [[ "$ROOT_RESPONSE" == *"Production RNN-T"* ]]; then
+        echo -e "${GREEN}✅ API endpoints responding correctly${NC}"
+        
+        # Extract and display key info
+        if [[ "$ROOT_RESPONSE" == *"model_load_time"* ]]; then
+            LOAD_TIME=$(echo "$ROOT_RESPONSE" | grep -o '"model_load_time":"[^"]*"' | cut -d'"' -f4)
+            echo -e "${BLUE}📊 Model loaded in: $LOAD_TIME${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Health check passed but API not fully ready${NC}"
+    fi
 else
-    echo -e "${RED}❌ Root endpoint not responding${NC}"
-    echo "Response: $ROOT_RESPONSE"
-fi
-
-# Test health endpoint
-echo "Testing health endpoint..."
-HEALTH_RESPONSE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "curl -s http://localhost:8000/health || echo 'failed'")
-
-if [[ "$HEALTH_RESPONSE" == *"healthy"* ]] || [[ "$HEALTH_RESPONSE" == *"loading"* ]]; then
-    echo -e "${GREEN}✅ Health endpoint responding${NC}"
-else
-    echo -e "${YELLOW}⚠️  Health endpoint may still be initializing${NC}"
+    echo -e "${RED}❌ Server health check failed${NC}"
+    echo -e "${YELLOW}   The server may still be starting. Check logs with:${NC}"
+    echo "   ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP 'sudo journalctl -u rnnt-server -f'"
 fi
 
 # Step 11: Create Helper Scripts
