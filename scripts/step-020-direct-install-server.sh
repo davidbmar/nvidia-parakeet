@@ -557,8 +557,9 @@ echo "   curl http://$GPU_INSTANCE_IP:8000/"
 echo "   curl http://$GPU_INSTANCE_IP:8000/health"
 echo ""
 echo -e "${YELLOW}📜 Next Steps:${NC}"
-echo "1. Run: ./scripts/step-030-test-system.sh"
-echo "2. Upload audio files to test transcription"
+echo "1. Run: ./scripts/step-026-deploy-websocket.sh (optional - adds real-time streaming)"
+echo "2. Run: ./scripts/step-030-test-system.sh (test the installation)"
+echo "3. Upload audio files to test transcription"
 echo ""
 
 # Update environment with completion timestamp
