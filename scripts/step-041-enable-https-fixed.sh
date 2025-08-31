@@ -137,6 +137,30 @@ else
     exit 1
 fi
 
+# Verify buffer size fixes are deployed
+log "Verifying buffer size limiting fixes are deployed..."
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'max_segment_duration_s' /opt/rnnt/websocket/audio_processor.py"; then
+    log "✅ Buffer size limiting fix verified in audio_processor.py"
+else
+    log_error "❌ Buffer size limiting fix not found in audio_processor.py"
+    exit 1
+fi
+
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'max_segment_duration_s=5.0' /opt/rnnt/websocket/websocket_handler.py"; then
+    log "✅ Buffer size parameter verified in websocket_handler.py"
+else
+    log_error "❌ Buffer size parameter not found in websocket_handler.py"
+    exit 1
+fi
+
+# Verify CUDA memory cleanup is deployed
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'torch.cuda.empty_cache' /opt/rnnt/websocket/transcription_stream.py"; then
+    log "✅ CUDA memory cleanup verified in transcription_stream.py"
+else
+    log_error "❌ CUDA memory cleanup not found in transcription_stream.py"
+    exit 1
+fi
+
 # Clear Python cache to ensure new files are loaded
 log "Clearing Python cache..."
 if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "sudo rm -rf /opt/rnnt/websocket/__pycache__"; then

@@ -160,12 +160,21 @@ class TranscriptionStream:
             )
             
             if isinstance(transcription, list):
-                return transcription[0] if transcription else ""
-            return str(transcription)
+                result = transcription[0] if transcription else ""
+            else:
+                result = str(transcription)
+            
+            # Clean up CUDA memory after inference
+            if self.device == 'cuda':
+                torch.cuda.empty_cache()
+                
+            return result
             
         except Exception as e:
             logger.warning(f"Inference fallback: {e}")
-            # Fallback to simple transcription
+            # Clean up CUDA memory on error too
+            if self.device == 'cuda':
+                torch.cuda.empty_cache()
             return ""
     
     def _process_transcription(

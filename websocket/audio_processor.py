@@ -31,7 +31,8 @@ class AudioProcessor:
         chunk_duration_ms: int = 100,
         buffer_duration_s: float = 2.0,
         vad_threshold: float = 0.01,
-        silence_duration_s: float = 0.5
+        silence_duration_s: float = 0.5,
+        max_segment_duration_s: float = 10.0
     ):
         """
         Initialize audio processor
@@ -42,17 +43,20 @@ class AudioProcessor:
             buffer_duration_s: Duration of sliding buffer in seconds
             vad_threshold: Energy threshold for voice activity detection
             silence_duration_s: Duration of silence to trigger segmentation
+            max_segment_duration_s: Maximum duration for a single segment (prevents CUDA OOM)
         """
         self.target_sample_rate = target_sample_rate
         self.chunk_duration_ms = chunk_duration_ms
         self.buffer_duration_s = buffer_duration_s
         self.vad_threshold = vad_threshold
         self.silence_duration_s = silence_duration_s
+        self.max_segment_duration_s = max_segment_duration_s
         
         # Calculate sizes
         self.chunk_size = int(target_sample_rate * chunk_duration_ms / 1000)
         self.buffer_size = int(target_sample_rate * buffer_duration_s)
         self.silence_chunks = int(silence_duration_s * 1000 / chunk_duration_ms)
+        self.max_segment_samples = int(target_sample_rate * max_segment_duration_s)
         
         # Initialize buffers
         self.audio_buffer = deque(maxlen=self.buffer_size)
@@ -63,7 +67,7 @@ class AudioProcessor:
         self.resampler = None
         self.last_sample_rate = None
         
-        logger.info(f"AudioProcessor initialized: {target_sample_rate}Hz, {chunk_duration_ms}ms chunks")
+        logger.info(f"AudioProcessor initialized: {target_sample_rate}Hz, {chunk_duration_ms}ms chunks, max segment: {max_segment_duration_s}s ({self.max_segment_samples} samples)")
     
     def process_chunk(
         self,
@@ -101,7 +105,12 @@ class AudioProcessor:
         
         # Check for end of segment
         is_end_of_segment = False
-        if has_voice:
+        
+        # Force segmentation if max duration reached (prevents CUDA OOM)
+        if len(self.current_segment) >= self.max_segment_samples:
+            logger.info(f"🔄 Force segmenting audio: {len(self.current_segment)} samples (max: {self.max_segment_samples})")
+            is_end_of_segment = True
+        elif has_voice:
             self.silence_counter = 0
         else:
             self.silence_counter += 1
