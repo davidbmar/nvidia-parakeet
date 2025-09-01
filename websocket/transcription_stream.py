@@ -115,47 +115,87 @@ class TranscriptionStream:
         Returns:
             Transcribed text
         """
-        # The actual SpeechBrain model expects file path or tensor
-        # We'll need to adapt this based on the model's API
-        
-        # For now, simplified inference
-        # In production, this would use model's streaming API
         try:
-            # Simple placeholder transcription without touching CUDA model
-            duration_seconds = len(audio_tensor) / sample_rate if hasattr(audio_tensor, '__len__') else 0
+            # Ensure we have proper tensor shape
+            if not isinstance(audio_tensor, torch.Tensor):
+                audio_tensor = torch.tensor(audio_tensor, dtype=torch.float32)
             
-            logger.info(f"📝 PLACEHOLDER: Generating test transcription for {duration_seconds:.2f}s audio")
+            # Get audio duration for logging
+            if hasattr(audio_tensor, 'shape'):
+                if len(audio_tensor.shape) == 1:
+                    num_samples = audio_tensor.shape[0]
+                elif len(audio_tensor.shape) == 2:
+                    num_samples = audio_tensor.shape[1]
+                else:
+                    num_samples = audio_tensor.numel()
+            else:
+                num_samples = len(audio_tensor) if hasattr(audio_tensor, '__len__') else 0
             
-            # Generate sample words based on audio duration
-            words_per_second = 2.5  # Average speaking rate
-            num_words = max(1, int(duration_seconds * words_per_second))
+            duration_seconds = num_samples / sample_rate
+            logger.info(f"🎤 Processing {duration_seconds:.2f}s audio segment")
             
-            sample_words = [
-                "hello", "world", "this", "is", "a", "test", "transcription", "system",
-                "working", "properly", "audio", "processing", "pipeline", "functioning",
-                "real", "time", "speech", "recognition", "demo", "successful"
-            ]
+            # Prepare audio tensor for SpeechBrain model
+            # Model expects [batch, time] or [batch, time, channels]
+            if audio_tensor.dim() == 1:
+                # Add batch dimension
+                audio_tensor = audio_tensor.unsqueeze(0)
+            elif audio_tensor.dim() == 3 and audio_tensor.shape[0] == 1:
+                # Already has batch dimension
+                pass
+            else:
+                # Ensure proper shape
+                audio_tensor = audio_tensor.reshape(1, -1)
             
-            # Select words cyclically based on number needed
-            selected_words = []
-            for i in range(num_words):
-                selected_words.append(sample_words[i % len(sample_words)])
+            # Move to device
+            if self.device == 'cuda':
+                audio_tensor = audio_tensor.cuda()
             
-            result = " ".join(selected_words)
-            logger.info(f"✅ PLACEHOLDER: Generated '{result}'")
+            # Save audio to temporary file and transcribe
+            # SpeechBrain models work better with file input
+            import tempfile
+            import soundfile as sf
             
-            # Clean up CUDA memory 
+            # Convert tensor to numpy for saving
+            if audio_tensor.dim() > 1:
+                audio_numpy = audio_tensor.squeeze(0).cpu().numpy()
+            else:
+                audio_numpy = audio_tensor.cpu().numpy()
+            
+            logger.info(f"Saving audio to temp file for transcription ({len(audio_numpy)} samples)")
+            
+            # Create temporary WAV file
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=True) as temp_file:
+                sf.write(temp_file.name, audio_numpy, sample_rate)
+                
+                # Transcribe using the model
+                with torch.no_grad():
+                    predictions = self.asr_model.transcribe_file(temp_file.name)
+            
+            # Extract text from predictions
+            if isinstance(predictions, list):
+                result = predictions[0] if predictions else ""
+            else:
+                result = str(predictions)
+            
+            logger.info(f"✅ Transcribed: '{result}'")
+            
+            # Clean up CUDA memory
             if self.device == 'cuda':
                 torch.cuda.empty_cache()
-                
+            
             return result
             
         except Exception as e:
-            logger.warning(f"Inference fallback: {e}")
-            # Clean up CUDA memory on error too
+            logger.error(f"Transcription error: {e}")
+            # Fallback to placeholder for now
+            logger.info("Falling back to placeholder transcription")
+            
+            # Clean up CUDA memory on error
             if self.device == 'cuda':
                 torch.cuda.empty_cache()
-            return ""
+            
+            # Return simple placeholder
+            return "transcription error - check logs"
     
     def _process_transcription(
         self,

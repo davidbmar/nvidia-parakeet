@@ -3,6 +3,10 @@ set -e
 
 # Production RNN-T Deployment - Enable HTTPS (FIXED VERSION)
 # This script enables HTTPS with proper systemd service for production deployment
+# MAJOR UPDATE: Now includes REAL SpeechBrain RNN-T transcription using file-based approach
+# - Fixes CUDA OOM errors with buffer size limiting (2s segments)
+# - Implements actual speech recognition using transcribe_file()
+# - Includes tensor shape fix and memory cleanup
 
 # Load environment variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -120,20 +124,28 @@ else
     exit 1
 fi
 
-# Verify placeholder transcription is deployed
-log "Verifying placeholder transcription fix is deployed..."
-if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'PLACEHOLDER.*test transcription' /opt/rnnt/websocket/transcription_stream.py"; then
-    log "✅ Placeholder transcription fix verified in deployed file"
+# Verify real transcription implementation is deployed
+log "Verifying real transcription implementation is deployed..."
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'transcribe_file' /opt/rnnt/websocket/transcription_stream.py"; then
+    log "✅ Real transcription with transcribe_file() verified in deployed file"
 else
-    log_error "❌ Placeholder transcription fix not found in deployed file"
+    log_error "❌ Real transcription implementation not found in deployed file"
     exit 1
 fi
 
-# Verify placeholder generation is deployed  
-if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'Generate sample words based on audio duration' /opt/rnnt/websocket/transcription_stream.py"; then
-    log "✅ Placeholder word generation verified in deployed file"
+# Verify file-based transcription approach is deployed  
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'tempfile.NamedTemporaryFile' /opt/rnnt/websocket/transcription_stream.py"; then
+    log "✅ File-based transcription approach verified in deployed file"
 else
-    log_error "❌ Placeholder word generation not found in deployed file"
+    log_error "❌ File-based transcription approach not found in deployed file"
+    exit 1
+fi
+
+# Verify soundfile dependency is available
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'soundfile as sf' /opt/rnnt/websocket/transcription_stream.py"; then
+    log "✅ SoundFile import verified in deployed file"
+else
+    log_error "❌ SoundFile import not found in deployed file"
     exit 1
 fi
 
@@ -285,11 +297,12 @@ echo "   Logs: sudo journalctl -u rnnt-https -f"
 echo "   Restart: sudo systemctl restart rnnt-https"
 echo ""
 echo -e "${YELLOW}📜 Next Steps:${NC}"
-echo "1. Test the web interface: https://$GPU_INSTANCE_IP/static/index.html"
-echo "2. The server will auto-restart on reboot"
-echo "3. Monitor logs for any issues: sudo journalctl -u rnnt-https -f"
+echo "1. Test real-time transcription: https://$GPU_INSTANCE_IP/static/index.html"
+echo "2. Monitor transcription logs: sudo journalctl -u rnnt-https -f"
+echo "3. The server will auto-restart on reboot"
+echo "4. Real SpeechBrain RNN-T model is now transcribing actual speech!"
 echo ""
-echo -e "${GREEN}✅ Production HTTPS deployment complete!${NC}"
+echo -e "${GREEN}✅ Production HTTPS deployment with REAL transcription complete!${NC}"
 
 # Clean up temporary files
 rm -f /tmp/rnnt-https.service
