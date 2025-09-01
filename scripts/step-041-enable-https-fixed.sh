@@ -279,6 +279,124 @@ else
     exit 1
 fi
 
+# Step 8.5: Comprehensive WebSocket Components Testing (NEW)
+echo -e "${GREEN}=== Step 8.5: WebSocket Components Testing ===${NC}"
+echo -e "${BLUE}🧪 Comprehensive testing of deployed optimizations...${NC}"
+
+# Test 1: Verify all optimizations are properly deployed
+echo -e "${BLUE}⚡ Testing performance optimizations deployment...${NC}"
+
+# Check mixed precision optimization
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'use_mixed_precision.*=.*device.*==.*cuda' /opt/rnnt/websocket/transcription_stream.py"; then
+    echo -e "${GREEN}✅ Mixed precision (FP16) optimization deployed${NC}"
+else
+    echo -e "${RED}❌ Mixed precision optimization missing${NC}"
+    exit 1
+fi
+
+# Check enhanced VAD with Zero Crossing Rate  
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'zero_crossings' /opt/rnnt/websocket/audio_processor.py && grep -q 'zcr.*=.*zero_crossings' /opt/rnnt/websocket/audio_processor.py"; then
+    echo -e "${GREEN}✅ Enhanced VAD with Zero Crossing Rate deployed${NC}"
+else
+    echo -e "${RED}❌ Enhanced VAD optimization missing${NC}" 
+    exit 1
+fi
+
+# Check real transcription with file-based approach
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'transcribe_file.*temp_file\.name' /opt/rnnt/websocket/transcription_stream.py"; then
+    echo -e "${GREEN}✅ Real transcription (file-based) deployed${NC}"
+else
+    echo -e "${RED}❌ Real transcription implementation missing${NC}"
+    exit 1
+fi
+
+# Check text post-processing for capitalization
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q '_post_process_transcription' /opt/rnnt/websocket/transcription_stream.py && grep -q 'processed\[0\]\.upper()' /opt/rnnt/websocket/transcription_stream.py"; then
+    echo -e "${GREEN}✅ Text post-processing (capitalization) deployed${NC}"
+else
+    echo -e "${RED}❌ Text post-processing missing${NC}"
+    exit 1  
+fi
+
+# Check CUDA memory optimization
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'torch\.cuda\.empty_cache' /opt/rnnt/websocket/transcription_stream.py"; then
+    echo -e "${GREEN}✅ CUDA memory optimization deployed${NC}"
+else
+    echo -e "${RED}❌ CUDA memory optimization missing${NC}"
+    exit 1
+fi
+
+# Check buffer size limiting (2-second segments)
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "grep -q 'max_segment_duration_s.*=.*2\.0' /opt/rnnt/websocket/audio_processor.py"; then
+    echo -e "${GREEN}✅ Buffer size limiting (2s) deployed${NC}"
+else
+    echo -e "${RED}❌ Buffer size limiting missing${NC}"
+    exit 1
+fi
+
+# Test 2: API endpoint comprehensive testing
+echo -e "${BLUE}🌐 Testing API endpoints with detailed responses...${NC}"
+
+# Test root endpoint with response validation
+ROOT_RESPONSE=$(curl -k -s --connect-timeout 10 "https://$GPU_INSTANCE_IP/" 2>/dev/null || echo "failed")
+if [[ "$ROOT_RESPONSE" == *"RNN-T Production HTTPS Server"* ]] && [[ "$ROOT_RESPONSE" == *"Mixed precision"* ]]; then
+    echo -e "${GREEN}✅ Root endpoint returns optimized server info${NC}"
+else
+    echo -e "${RED}❌ Root endpoint response invalid: $ROOT_RESPONSE${NC}"
+    exit 1
+fi
+
+# Test health endpoint
+HEALTH_RESPONSE=$(curl -k -s --connect-timeout 10 "https://$GPU_INSTANCE_IP/health" 2>/dev/null || echo "failed")
+if [[ "$HEALTH_RESPONSE" == *'"status":"healthy"'* ]] || [[ "$HEALTH_RESPONSE" == *'"status":"loading"'* ]]; then
+    echo -e "${GREEN}✅ Health endpoint responding correctly${NC}"
+else
+    echo -e "${YELLOW}⚠️  Health endpoint response: $HEALTH_RESPONSE${NC}"
+fi
+
+# Test WebSocket status endpoint  
+WS_STATUS_RESPONSE=$(curl -k -s --connect-timeout 10 "https://$GPU_INSTANCE_IP/ws/status" 2>/dev/null || echo "failed")  
+if [[ "$WS_STATUS_RESPONSE" == *'"websocket_endpoint":"/ws/transcribe"'* ]] && [[ "$WS_STATUS_RESPONSE" == *'"protocol":"WSS"'* ]]; then
+    echo -e "${GREEN}✅ WebSocket status endpoint shows WSS protocol${NC}"
+else
+    echo -e "${RED}❌ WebSocket status response invalid: $WS_STATUS_RESPONSE${NC}"
+    exit 1
+fi
+
+# Test 3: Service integration testing
+echo -e "${BLUE}🔧 Testing systemd service integration...${NC}"
+
+# Check service is active
+SERVICE_STATUS=$(ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "sudo systemctl is-active rnnt-https" 2>/dev/null || echo "inactive")
+if [ "$SERVICE_STATUS" = "active" ]; then
+    echo -e "${GREEN}✅ HTTPS service is active${NC}"
+else
+    echo -e "${RED}❌ HTTPS service not active: $SERVICE_STATUS${NC}"
+    exit 1
+fi
+
+# Check service logs for optimization confirmations
+RECENT_LOGS=$(ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "sudo journalctl -u rnnt-https --no-pager -n 20 --since '2 minutes ago'" 2>/dev/null || echo "")
+if [[ "$RECENT_LOGS" == *"mixed precision"* ]] || [[ "$RECENT_LOGS" == *"WebSocket handler initialized"* ]]; then
+    echo -e "${GREEN}✅ Service logs show optimization loading${NC}"
+else
+    echo -e "${BLUE}ℹ️  Service logs (optimization loading may still be in progress):${NC}"
+    echo "$RECENT_LOGS" | tail -3
+fi
+
+# Test 4: Client-side JavaScript validation
+echo -e "${BLUE}📱 Testing client-side JavaScript deployment...${NC}"
+
+# Check if fixed client JavaScript is deployed
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "test -f /opt/rnnt/static/websocket-client.js && grep -q 'transcription.*case.*transcription' /opt/rnnt/static/websocket-client.js"; then
+    echo -e "${GREEN}✅ Fixed WebSocket client JavaScript deployed${NC}"
+else
+    echo -e "${YELLOW}⚠️  Client JavaScript may need update for transcription message handling${NC}"
+fi
+
+echo -e "${GREEN}✅ WebSocket components testing complete!${NC}"
+echo -e "${BLUE}🎯 All performance optimizations verified and deployed successfully${NC}"
+
 echo -e "${GREEN}=== Step 9: Connection Information ===${NC}"
 echo ""
 echo -e "${GREEN}🎉 HTTPS WebSocket Server Started Successfully!${NC}"

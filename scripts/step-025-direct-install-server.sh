@@ -237,6 +237,25 @@ echo -e "${GREEN}=== Step 5: Copying Server Code ===${NC}"
 copy_to_instance "$PROJECT_ROOT/docker/rnnt-server.py" "/opt/rnnt/rnnt-server.py"
 copy_to_instance "$PROJECT_ROOT/config/requirements.txt" "/opt/rnnt/requirements.txt"
 
+# Copy HTTPS server with WebSocket integration (NEW)
+echo -e "${BLUE}📡 Copying HTTPS WebSocket server with optimizations...${NC}"
+copy_to_instance "$PROJECT_ROOT/rnnt-https-server.py" "/opt/rnnt/rnnt-https-server.py"
+
+# Copy optimized WebSocket components (NEW)
+echo -e "${BLUE}🚀 Copying optimized WebSocket components...${NC}"
+ssh_cmd "mkdir -p /opt/rnnt/websocket"
+copy_to_instance "$PROJECT_ROOT/websocket/websocket_handler.py" "/opt/rnnt/websocket/websocket_handler.py"
+copy_to_instance "$PROJECT_ROOT/websocket/transcription_stream.py" "/opt/rnnt/websocket/transcription_stream.py"  
+copy_to_instance "$PROJECT_ROOT/websocket/audio_processor.py" "/opt/rnnt/websocket/audio_processor.py"
+copy_to_instance "$PROJECT_ROOT/websocket/__init__.py" "/opt/rnnt/websocket/__init__.py" 2>/dev/null || echo "# WebSocket module" | ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "cat > /opt/rnnt/websocket/__init__.py"
+
+# Copy static files for web UI (NEW)
+echo -e "${BLUE}🌐 Copying web UI components...${NC}"
+ssh_cmd "mkdir -p /opt/rnnt/static"
+copy_to_instance "$PROJECT_ROOT/static/index.html" "/opt/rnnt/static/index.html" 2>/dev/null || echo "Static files not found, will skip"
+copy_to_instance "$PROJECT_ROOT/static/websocket-client.js" "/opt/rnnt/static/websocket-client.js" 2>/dev/null || echo "Client JS not found, will skip"
+copy_to_instance "$PROJECT_ROOT/static/transcription-ui.js" "/opt/rnnt/static/transcription-ui.js" 2>/dev/null || echo "UI JS not found, will skip"
+
 # Copy environment configuration
 copy_to_instance "$ENV_FILE" "/opt/rnnt/.env"
 
@@ -499,8 +518,51 @@ else
     echo "   ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP 'sudo journalctl -u rnnt-server -f'"
 fi
 
-# Step 11: Create Helper Scripts
-echo -e "${GREEN}=== Step 11: Creating Helper Scripts ===${NC}"
+# Step 11: WebSocket Components Verification (NEW)
+echo -e "${GREEN}=== Step 11: WebSocket Components Verification ===${NC}"
+echo -e "${BLUE}🧪 Testing optimized WebSocket components...${NC}"
+
+# Test 1: Verify WebSocket files are deployed
+echo -e "${BLUE}📁 Checking WebSocket file deployment...${NC}"
+WEBSOCKET_FILES=("websocket_handler.py" "transcription_stream.py" "audio_processor.py" "__init__.py")
+for file in "${WEBSOCKET_FILES[@]}"; do
+    if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "test -f /opt/rnnt/websocket/$file"; then
+        echo -e "${GREEN}✅ WebSocket file deployed: $file${NC}"
+    else
+        echo -e "${YELLOW}⚠️  WebSocket file missing: $file (will be added by later steps)${NC}"
+    fi
+done
+
+# Test 2: Verify HTTPS server file is deployed
+echo -e "${BLUE}🔒 Checking HTTPS server deployment...${NC}"
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "test -f /opt/rnnt/rnnt-https-server.py"; then
+    echo -e "${GREEN}✅ HTTPS server file deployed${NC}"
+else
+    echo -e "${YELLOW}⚠️  HTTPS server file missing (will be added by later steps)${NC}"
+fi
+
+# Test 3: Verify our optimizations are in the deployed files
+echo -e "${BLUE}⚡ Checking performance optimizations in deployed files...${NC}"
+
+# Check mixed precision optimization
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "test -f /opt/rnnt/websocket/transcription_stream.py && grep -q 'use_mixed_precision' /opt/rnnt/websocket/transcription_stream.py"; then
+    echo -e "${GREEN}✅ Mixed precision optimization deployed${NC}"
+else
+    echo -e "${BLUE}ℹ️  Mixed precision optimization will be deployed by HTTPS setup${NC}"
+fi
+
+# Check enhanced VAD with Zero Crossing Rate
+if ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "test -f /opt/rnnt/websocket/audio_processor.py && grep -q 'zero_crossings' /opt/rnnt/websocket/audio_processor.py"; then
+    echo -e "${GREEN}✅ Enhanced VAD with ZCR deployed${NC}"
+else
+    echo -e "${BLUE}ℹ️  Enhanced VAD will be deployed by HTTPS setup${NC}"
+fi
+
+echo -e "${GREEN}✅ WebSocket components verification complete!${NC}"
+echo -e "${BLUE}📝 Note: Full WebSocket optimizations will be deployed by step-041-enable-https-fixed.sh${NC}"
+
+# Step 12: Create Helper Scripts  
+echo -e "${GREEN}=== Step 12: Creating Helper Scripts ===${NC}"
 
 # Create server management script
 MANAGEMENT_SCRIPT='#!/bin/bash
