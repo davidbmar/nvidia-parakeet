@@ -110,6 +110,11 @@ class TranscriptionStream:
                 start_time
             )
             
+            # Performance logging
+            processing_time_s = (time.time() - start_time)
+            rtf = processing_time_s / duration if duration > 0 else 0
+            logger.info(f"🚀 Performance: RTF={rtf:.2f}, {processing_time_s*1000:.0f}ms for {duration:.2f}s audio")
+            
             # Update state
             if is_final:
                 self.final_transcripts.append(result['text'])
@@ -199,10 +204,7 @@ class TranscriptionStream:
             
             # Post-process transcription for better formatting
             processed_result = self._post_process_transcription(result)
-            # Performance logging
-            processing_time_s = (time.time() - start_time)
-            rtf = processing_time_s / duration if duration > 0 else 0
-            logger.info(f"✅ Transcribed: '{result}' -> '{processed_result}' (RTF: {rtf:.2f}, {processing_time_s*1000:.0f}ms)")
+            logger.info(f"✅ Transcribed: '{result}' -> '{processed_result}'")
             
             # Optimization: More aggressive CUDA memory cleanup
             if self.device == 'cuda':
