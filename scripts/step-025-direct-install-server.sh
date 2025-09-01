@@ -37,6 +37,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$PROJECT_ROOT/.env"
 
+# Setup logging
+TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
+LOG_DIR="$PROJECT_ROOT/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/step-025-direct-install-server-$TIMESTAMP.log"
+
+# Function to log messages
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] $*" | tee -a "$LOG_FILE"
+}
+
+log_error() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $*" | tee -a "$LOG_FILE" >&2
+}
+
+log_success() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [SUCCESS] $*" | tee -a "$LOG_FILE"
+}
+
+log_warning() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARNING] $*" | tee -a "$LOG_FILE"
+}
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -44,24 +67,41 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Start logging
+log "=== Step 025: Direct Install Server Started ==="
+log "Log file: $LOG_FILE"
+log "Target Instance: ${GPU_INSTANCE_IP:-'TBD'}"
+log "SSH Key: ${SSH_KEY_FILE:-'TBD'}"
+
 # Load configuration
 if [ ! -f "$ENV_FILE" ]; then
+    log_error "Configuration file not found: $ENV_FILE"
     echo -e "${RED}❌ Configuration file not found: $ENV_FILE${NC}"
     echo "Run: ./scripts/step-000-setup-configuration.sh first"
     exit 1
 fi
 
+log "Loading configuration from $ENV_FILE"
 source "$ENV_FILE"
 
+# Update log with actual values
+log "Target Instance: $GPU_INSTANCE_IP"
+log "SSH Key: $SSH_KEY_FILE"
+log "Instance ID: $GPU_INSTANCE_ID"
+
 # Validate required variables
+log "Validating required environment variables..."
 required_vars=("GPU_INSTANCE_IP" "SSH_KEY_FILE" "GPU_INSTANCE_ID")
 for var in "${required_vars[@]}"; do
     if [ -z "${!var}" ]; then
+        log_error "Required variable $var not set"
         echo -e "${RED}❌ Required variable $var not set${NC}"
         echo "Run: ./scripts/step-010-deploy-gpu-instance.sh first"
         exit 1
     fi
+    log "✅ $var: ${!var}"
 done
+log_success "All required variables validated"
 
 echo -e "${BLUE}🚀 Production RNN-T Deployment - Server Installation${NC}"
 echo "================================================================"
@@ -69,11 +109,15 @@ echo "Target Instance: $GPU_INSTANCE_IP ($GPU_INSTANCE_ID)"
 echo "SSH Key: $SSH_KEY_FILE"
 echo ""
 
-# Function to run SSH command with error handling
+# Function to run SSH command with error handling and logging
 ssh_cmd() {
     local cmd="$*"
+    log "SSH Command: $cmd"
     echo -e "${BLUE}🔧 SSH: $cmd${NC}"
-    if ! ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "$cmd"; then
+    if ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "$cmd"; then
+        log_success "SSH Command completed: $cmd"
+    else
+        log_error "SSH command failed: $cmd"
         echo -e "${RED}❌ SSH command failed: $cmd${NC}"
         exit 1
     fi
@@ -184,12 +228,16 @@ apt_cmd() {
     ssh_cmd "$@"
 }
 
-# Function to copy files to instance
+# Function to copy files to instance with logging
 copy_to_instance() {
     local local_path="$1"
     local remote_path="$2"
+    log "Copying file: $local_path → $remote_path"
     echo -e "${BLUE}📁 Copying: $local_path → $remote_path${NC}"
-    if ! scp -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no "$local_path" ubuntu@"$GPU_INSTANCE_IP":"$remote_path"; then
+    if scp -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no "$local_path" ubuntu@"$GPU_INSTANCE_IP":"$remote_path"; then
+        log_success "File copied: $(basename "$local_path")"
+    else
+        log_error "File copy failed: $local_path → $remote_path"
         echo -e "${RED}❌ File copy failed: $local_path${NC}"
         exit 1
     fi
@@ -238,10 +286,13 @@ copy_to_instance "$PROJECT_ROOT/docker/rnnt-server.py" "/opt/rnnt/rnnt-server.py
 copy_to_instance "$PROJECT_ROOT/config/requirements.txt" "/opt/rnnt/requirements.txt"
 
 # Copy HTTPS server with WebSocket integration (NEW)
+log "Deploying HTTPS WebSocket server with optimizations"
 echo -e "${BLUE}📡 Copying HTTPS WebSocket server with optimizations...${NC}"
 copy_to_instance "$PROJECT_ROOT/rnnt-https-server.py" "/opt/rnnt/rnnt-https-server.py"
+log_success "HTTPS WebSocket server deployed"
 
 # Copy optimized WebSocket components (NEW)
+log "Deploying optimized WebSocket components"
 echo -e "${BLUE}🚀 Copying optimized WebSocket components...${NC}"
 ssh_cmd "mkdir -p /opt/rnnt/websocket"
 copy_to_instance "$PROJECT_ROOT/websocket/websocket_handler.py" "/opt/rnnt/websocket/websocket_handler.py"
@@ -618,15 +669,46 @@ echo -e "${BLUE}📋 Quick Test Commands:${NC}"
 echo "   curl http://$GPU_INSTANCE_IP:8000/"
 echo "   curl http://$GPU_INSTANCE_IP:8000/health"
 echo ""
-echo -e "${YELLOW}📜 Next Steps:${NC}"
-echo "1. Run: ./scripts/step-026-deploy-websocket.sh (optional - adds real-time streaming)"
-echo "2. Run: ./scripts/step-030-test-system.sh (test the installation)"
-echo "3. Upload audio files to test transcription"
-echo ""
+# Function to show next steps
+show_next_steps() {
+    log "Displaying next steps for user"
+    echo -e "${YELLOW}📜 NEXT STEPS - Run These Scripts in Order:${NC}"
+    echo ""
+    echo -e "${GREEN}🔒 RECOMMENDED NEXT STEP:${NC}"
+    echo "   ./scripts/step-041-enable-https-fixed.sh"
+    echo "   └── Enables HTTPS + WebSocket transcription with all optimizations"
+    echo ""
+    echo -e "${BLUE}📋 Alternative Steps:${NC}"
+    echo "   ./scripts/step-050-test-system.sh     - Test current HTTP installation"
+    echo "   ./scripts/step-055-test-websocket-functionality.sh - Test WebSocket features"
+    echo ""
+    echo -e "${BLUE}🔧 Management Commands (on remote instance):${NC}"
+    echo "   ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP './rnnt-server-ctl.sh status'"
+    echo "   ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP './rnnt-server-ctl.sh logs'"
+    echo ""
+    echo -e "${GREEN}🎯 PRODUCTION DEPLOYMENT PATH:${NC}"
+    echo "   step-025 (✅ completed) → step-041 → step-050 → step-055"
+    echo ""
+    
+    # Log the completion
+    log_success "Step 025 completed successfully"
+    log "Next recommended step: step-041-enable-https-fixed.sh"
+    log "Server installed at: http://$GPU_INSTANCE_IP:8000"
+    log "Health check: http://$GPU_INSTANCE_IP:8000/health"
+}
+
+# Show next steps
+show_next_steps
 
 # Update environment with completion timestamp
+log "Updating environment with completion timestamp"
 COMPLETION_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 sed -i "s/SERVER_INSTALLED=\".*\"/SERVER_INSTALLED=\"$COMPLETION_TIME\"/" "$ENV_FILE"
+log "Step 025 completion time: $COMPLETION_TIME"
 
 # Clean up temporary files
+log "Cleaning up temporary files"
 rm -f /tmp/rnnt-server.service /tmp/download_model.py /tmp/rnnt-server-ctl.sh
+
+log "=== Step 025: Direct Install Server Completed Successfully ==="
+log "Log saved to: $LOG_FILE"

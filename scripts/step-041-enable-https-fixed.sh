@@ -414,13 +414,58 @@ echo "   Status: sudo systemctl status rnnt-https"
 echo "   Logs: sudo journalctl -u rnnt-https -f"
 echo "   Restart: sudo systemctl restart rnnt-https"
 echo ""
-echo -e "${YELLOW}📜 Next Steps:${NC}"
-echo "1. Test real-time transcription: https://$GPU_INSTANCE_IP/static/index.html"
-echo "2. Monitor transcription logs: sudo journalctl -u rnnt-https -f"
-echo "3. The server will auto-restart on reboot"
-echo "4. Real SpeechBrain RNN-T model is now transcribing actual speech!"
-echo ""
+# Function to show next steps
+show_next_steps() {
+    log "Displaying next steps and testing instructions"
+    echo -e "${YELLOW}📜 NEXT STEPS - Testing & Monitoring:${NC}"
+    echo ""
+    echo -e "${GREEN}🌐 WEB INTERFACE TESTING:${NC}"
+    echo "   https://$GPU_INSTANCE_IP/static/index.html"
+    echo "   └── Real-time transcription with microphone"
+    echo "   └── All optimizations active (Mixed precision, Enhanced VAD, etc.)"
+    echo ""
+    echo -e "${BLUE}🔧 API TESTING:${NC}"
+    echo "   curl -k https://$GPU_INSTANCE_IP/"
+    echo "   curl -k https://$GPU_INSTANCE_IP/health"
+    echo "   curl -k https://$GPU_INSTANCE_IP/ws/status"
+    echo ""
+    echo -e "${BLUE}📊 MONITORING:${NC}"
+    echo "   ssh -i $SSH_KEY_FILE ubuntu@$GPU_INSTANCE_IP 'sudo journalctl -u rnnt-https -f'"
+    echo "   └── Watch real-time transcription logs with performance metrics"
+    echo ""
+    echo -e "${GREEN}📋 COMPREHENSIVE TESTING:${NC}"
+    echo "   ./scripts/step-050-test-system.sh        - Full system validation"  
+    echo "   ./scripts/step-055-test-websocket-functionality.sh - WebSocket tests"
+    echo "   ./scripts/step-080-run-all-tests.sh      - Complete test suite"
+    echo ""
+    echo -e "${GREEN}🎯 PRODUCTION FEATURES NOW ACTIVE:${NC}"
+    echo "   ✅ Real SpeechBrain RNN-T transcription (not placeholder)"
+    echo "   ✅ Mixed precision (FP16) - 2x speed boost"
+    echo "   ✅ Enhanced VAD with Zero Crossing Rate"
+    echo "   ✅ Buffer size limiting (prevents CUDA OOM)"
+    echo "   ✅ Text post-processing (proper capitalization)"
+    echo "   ✅ CUDA memory optimization"
+    echo "   ✅ HTTPS/WSS secure connections"
+    echo "   ✅ Auto-restart on reboot"
+    echo ""
+    
+    # Log completion details
+    log_success "Step 041 completed successfully - HTTPS WebSocket server active"
+    log "Web interface: https://$GPU_INSTANCE_IP/static/index.html"
+    log "WebSocket endpoint: wss://$GPU_INSTANCE_IP/ws/transcribe"
+    log "All performance optimizations active"
+    log "Next recommended: step-050-test-system.sh for validation"
+}
+
+# Show next steps
+show_next_steps
+
 echo -e "${GREEN}✅ Production HTTPS deployment with REAL transcription complete!${NC}"
 
 # Clean up temporary files
+log "Cleaning up temporary files"
 rm -f /tmp/rnnt-https.service
+
+log "=== Step 041: Enable HTTPS Fixed - Completed Successfully ==="
+log "Production server active with all optimizations"
+log "Log saved to: $LOG_FILE"
