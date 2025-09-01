@@ -119,12 +119,31 @@ class WebSocketHandler:
             message: Raw message bytes or text
         """
         try:
+            # Debug: Log detailed message classification info
+            if isinstance(message, str):
+                logger.info(f"🔤 MSG-DEBUG: String message, length={len(message)}, type=str, first_chars='{message[:20]}...'")
+                classification = "control-string"
+            elif isinstance(message, bytes):
+                first_byte = message[:1]
+                logger.info(f"🔢 MSG-DEBUG: Bytes message, length={len(message)}, first_byte=0x{first_byte.hex() if first_byte else '??'}, first_4_bytes={message[:4].hex()}")
+                if first_byte == b'{':
+                    logger.info(f"📋 MSG-DEBUG: Bytes message starts with '{{' - routing to control handler")
+                    classification = "control-bytes"
+                else:
+                    logger.info(f"🎵 MSG-DEBUG: Bytes message does NOT start with '{{' - routing to audio handler")
+                    classification = "audio"
+            else:
+                logger.warning(f"❓ MSG-DEBUG: Unknown message type: {type(message)}")
+                classification = "unknown"
+            
             # Check if message is JSON control message or binary audio
             if isinstance(message, str) or (isinstance(message, bytes) and message[:1] == b'{'):
                 # JSON control message (string or JSON bytes)
+                logger.info(f"🎯 MSG-DEBUG: Routing {classification} to CONTROL handler")
                 await self._handle_control_message(websocket, client_id, message)
             else:
                 # Binary audio data
+                logger.info(f"🎯 MSG-DEBUG: Routing {classification} to AUDIO handler")
                 await self._handle_audio_data(websocket, client_id, message)
                 
         except Exception as e:
@@ -148,9 +167,23 @@ class WebSocketHandler:
         try:
             # Handle both string and bytes
             if isinstance(message, str):
+                logger.info(f"🔤 CTRL-DEBUG: Processing string control message, length={len(message)}")
                 data = json.loads(message)
             else:
-                data = json.loads(message.decode('utf-8'))
+                logger.info(f"🔢 CTRL-DEBUG: Processing bytes control message, length={len(message)}, first_4_bytes={message[:4].hex()}")
+                # Defensive handling for potential binary audio data misclassification
+                try:
+                    decoded_text = message.decode('utf-8')
+                    logger.info(f"✅ CTRL-DEBUG: Successfully decoded bytes to UTF-8, length={len(decoded_text)}")
+                    data = json.loads(decoded_text)
+                except UnicodeDecodeError as e:
+                    # Binary audio data was mistakenly routed here - redirect to audio handler
+                    logger.warning(f"🚨 CTRL-DEBUG: UTF-8 DECODE ERROR - Binary data misrouted to control handler!")
+                    logger.warning(f"🔍 CTRL-DEBUG: Error details: {e}")
+                    logger.warning(f"📊 CTRL-DEBUG: Message info: type={type(message)}, length={len(message)}, first_8_bytes={message[:8].hex()}")
+                    logger.warning(f"🔄 CTRL-DEBUG: Redirecting to audio handler as defensive measure")
+                    await self._handle_audio_data(websocket, client_id, message)
+                    return
             message_type = data.get('type')
             
             if message_type == 'start_recording':
@@ -185,8 +218,11 @@ class WebSocketHandler:
             client_id: Client identifier
             audio_data: Raw audio bytes
         """
+        logger.info(f"🎵 AUDIO-DEBUG: Processing audio data, length={len(audio_data)}, first_4_bytes={audio_data[:4].hex() if len(audio_data) >= 4 else audio_data.hex()}")
+        
         state = self.connection_states.get(client_id)
         if not state or not state.get('is_recording'):
+            logger.info(f"🚫 AUDIO-DEBUG: Ignoring audio data - not recording (state={bool(state)}, is_recording={state.get('is_recording') if state else None})")
             return
         
         try:
@@ -344,7 +380,9 @@ class WebSocketHandler:
             message: Message dictionary
         """
         try:
+            logger.info(f"📤 SEND-DEBUG: Sending message to client: type={message.get('type')}, text='{message.get('text', 'N/A')[:50]}...'")
             await websocket.send_json(message)
+            logger.info(f"✅ SEND-DEBUG: Message sent successfully")
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
             # Remove from active connections if send fails

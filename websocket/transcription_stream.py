@@ -177,13 +177,15 @@ class TranscriptionStream:
             else:
                 result = str(predictions)
             
-            logger.info(f"✅ Transcribed: '{result}'")
+            # Post-process transcription for better formatting
+            processed_result = self._post_process_transcription(result)
+            logger.info(f"✅ Transcribed: '{result}' -> '{processed_result}'")
             
             # Clean up CUDA memory
             if self.device == 'cuda':
                 torch.cuda.empty_cache()
             
-            return result
+            return processed_result
             
         except Exception as e:
             logger.error(f"Transcription error: {e}")

@@ -81,11 +81,12 @@ class TranscriptionWebSocket {
                     
                     switch (data.type) {
                         case 'partial':
-                            if (this.onPartialTranscription) this.onPartialTranscription(data.text || data.transcript);
+                            if (this.onPartialTranscription) this.onPartialTranscription(data);
                             break;
+                        case 'transcription':
                         case 'final':
                         case 'transcript':
-                            if (this.onTranscription) this.onTranscription(data.text || data.transcript);
+                            if (this.onTranscription) this.onTranscription(data);
                             break;
                         case 'error':
                             this.onError({ message: data.message || data.error || 'Unknown error' });
