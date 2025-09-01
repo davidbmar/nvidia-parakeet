@@ -30,7 +30,7 @@ class AudioProcessor:
         target_sample_rate: int = 16000,
         chunk_duration_ms: int = 100,
         buffer_duration_s: float = 2.0,
-        vad_threshold: float = 0.01,
+        vad_threshold: float = 0.02,  # Improved VAD threshold based on 2025 best practices
         silence_duration_s: float = 0.5,
         max_segment_duration_s: float = 2.0
     ):
@@ -167,7 +167,7 @@ class AudioProcessor:
     
     def _detect_voice_activity(self, audio: np.ndarray) -> bool:
         """
-        Simple energy-based voice activity detection
+        Enhanced VAD with noise reduction - 2025 best practices
         
         Args:
             audio: Audio array
@@ -175,11 +175,43 @@ class AudioProcessor:
         Returns:
             True if voice activity detected
         """
-        # Calculate RMS energy
-        energy = np.sqrt(np.mean(audio ** 2))
+        if len(audio) == 0:
+            return False
         
-        # Compare to threshold
-        return energy > self.vad_threshold
+        # Convert to float for better precision
+        audio_float = audio.astype(np.float64)
+        
+        # Noise reduction: Simple high-pass filter to remove low-frequency noise
+        if len(audio_float) > 1:
+            # First-order high-pass filter (cutoff ~300Hz for 16kHz sample rate)
+            alpha = 0.95  # Coefficient for high-pass
+            filtered = np.zeros_like(audio_float)
+            filtered[0] = audio_float[0]
+            for i in range(1, len(audio_float)):
+                filtered[i] = alpha * (filtered[i-1] + audio_float[i] - audio_float[i-1])
+            audio_float = filtered
+        
+        # Enhanced energy calculation
+        rms_energy = np.sqrt(np.mean(audio_float ** 2))
+        
+        # Zero Crossing Rate (ZCR) for voice detection  
+        zero_crossings = 0
+        for i in range(len(audio_float) - 1):
+            if audio_float[i] * audio_float[i + 1] < 0:
+                zero_crossings += 1
+        zcr = zero_crossings / len(audio_float) if len(audio_float) > 1 else 0
+        
+        # Voice activity if energy is above threshold AND has reasonable ZCR
+        # Speech typically has ZCR between 0.01 and 0.35
+        has_voice_energy = rms_energy > self.vad_threshold
+        has_speech_zcr = 0.01 < zcr < 0.35
+        
+        # For debugging - log when we detect voice
+        if has_voice_energy and has_speech_zcr:
+            logger.debug(f"🎤 Voice detected: energy={rms_energy:.4f}, zcr={zcr:.4f}")
+        
+        # Return True if both conditions met (more robust VAD)
+        return has_voice_energy and has_speech_zcr
     
     def reset(self):
         """Reset all buffers and counters"""
