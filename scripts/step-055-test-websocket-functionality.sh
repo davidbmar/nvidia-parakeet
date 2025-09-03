@@ -33,7 +33,7 @@ echo ""
 
 # Step 1: Service Status
 echo -e "${GREEN}=== Step 1: Service Status Check ===${NC}"
-SERVICE_STATUS=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "sudo systemctl is-active rnnt-websocket" 2>/dev/null || echo "failed")
+SERVICE_STATUS=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "sudo systemctl is-active rnnt-https" 2>/dev/null || echo "failed")
 
 if [ "$SERVICE_STATUS" = "active" ]; then
     echo -e "${GREEN}✅ WebSocket service is running${NC}"
@@ -46,7 +46,7 @@ fi
 echo -e "${GREEN}=== Step 2: REST API Tests ===${NC}"
 
 echo "Testing Root endpoint..."
-ROOT_RESPONSE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "timeout 10 curl -s --connect-timeout 5 http://localhost:8000/" 2>/dev/null || echo "FAILED")
+ROOT_RESPONSE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "timeout 10 curl -k -s --connect-timeout 5 https://localhost/" 2>/dev/null || echo "FAILED")
 if echo "$ROOT_RESPONSE" | grep -q "WebSocket"; then
     echo -e "${GREEN}✅ Root endpoint: PASS${NC}"
 else
@@ -54,7 +54,7 @@ else
 fi
 
 echo "Testing Health endpoint..."
-HEALTH_RESPONSE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "timeout 10 curl -s --connect-timeout 5 http://localhost:8000/health" 2>/dev/null || echo "FAILED")
+HEALTH_RESPONSE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "timeout 10 curl -k -s --connect-timeout 5 https://localhost/health" 2>/dev/null || echo "FAILED")
 if echo "$HEALTH_RESPONSE" | grep -q "healthy"; then
     echo -e "${GREEN}✅ Health endpoint: PASS${NC}"
 else
@@ -62,7 +62,7 @@ else
 fi
 
 echo "Testing WebSocket Status endpoint..."
-WS_STATUS_RESPONSE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "timeout 10 curl -s --connect-timeout 5 http://localhost:8000/ws/status" 2>/dev/null || echo "FAILED")
+WS_STATUS_RESPONSE=$(ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no ubuntu@"$GPU_INSTANCE_IP" "timeout 10 curl -k -s --connect-timeout 5 https://localhost/ws/status" 2>/dev/null || echo "FAILED")
 if echo "$WS_STATUS_RESPONSE" | grep -q "active"; then
     echo -e "${GREEN}✅ WebSocket status: PASS${NC}"
 else
