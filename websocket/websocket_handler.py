@@ -85,6 +85,45 @@ class WebSocketHandler:
         
         logger.info(f"Client {client_id} connected")
     
+    async def handle_websocket(self, websocket: WebSocket, client_id: str):
+        """
+        Handle complete WebSocket session lifecycle
+        
+        Args:
+            websocket: WebSocket connection
+            client_id: Client identifier
+        """
+        try:
+            # Connect the client
+            await self.connect(websocket, client_id)
+            
+            # Handle messages until disconnection
+            while True:
+                try:
+                    # Wait for message from client
+                    message = await websocket.receive()
+                    
+                    # Handle different message types
+                    if message['type'] == 'websocket.receive':
+                        if 'bytes' in message:
+                            # Binary data (audio)
+                            await self.handle_message(websocket, client_id, message['bytes'])
+                        elif 'text' in message:
+                            # Text data (JSON control)
+                            await self.handle_message(websocket, client_id, message['text'])
+                    elif message['type'] == 'websocket.disconnect':
+                        break
+                        
+                except Exception as e:
+                    logger.error(f"Error handling message from {client_id}: {e}")
+                    break
+                    
+        except Exception as e:
+            logger.error(f"WebSocket session error for {client_id}: {e}")
+        finally:
+            # Always disconnect cleanly
+            await self.disconnect(client_id)
+    
     async def disconnect(self, client_id: str):
         """
         Handle WebSocket disconnection
