@@ -188,13 +188,33 @@ fi
 
 echo -e "${GREEN}✅ Fixed WebSocket components deployed and verified${NC}"
 
-echo -e "${GREEN}=== Step 4: Updating Client JavaScript ===${NC}"
-# Ensure static/js directory exists
+echo -e "${GREEN}=== Step 4: Deploying Web Interface Files ===${NC}"
+# Ensure static directory structure exists
 ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "mkdir -p /opt/rnnt/static/js"
 
-# Copy the updated client with protocol detection
-scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../static/websocket-client.js" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/static/websocket-client.js
-echo -e "${GREEN}✅ Client JavaScript updated${NC}"
+# Copy all required static files for the web interface
+echo "Copying web interface files..."
+scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../static/websocket-client.js" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/static/
+scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../static/audio-recorder.js" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/static/
+scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../static/transcription-ui.js" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/static/
+scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../static/styles.css" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/static/
+scp -i "$SSH_KEY_FILE" "$SCRIPT_DIR/../static/index.html" ubuntu@"$GPU_INSTANCE_IP":/opt/rnnt/static/
+
+# Verify all files were deployed
+echo "Verifying web interface deployment..."
+MISSING_FILES=""
+for file in websocket-client.js audio-recorder.js transcription-ui.js styles.css index.html; do
+    if ! ssh -i "$SSH_KEY_FILE" ubuntu@"$GPU_INSTANCE_IP" "test -f /opt/rnnt/static/$file"; then
+        MISSING_FILES="$MISSING_FILES $file"
+    fi
+done
+
+if [ -n "$MISSING_FILES" ]; then
+    echo -e "${RED}❌ Missing files: $MISSING_FILES${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✅ All web interface files deployed successfully${NC}"
+fi
 
 echo -e "${GREEN}=== Step 5: Creating HTTPS Systemd Service ===${NC}"
 # Create the systemd service file with proper root privileges
