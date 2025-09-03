@@ -59,7 +59,7 @@ class WebSocketHandler:
         # Initialize client state
         self.connection_states[client_id] = {
             'connected_at': datetime.utcnow().isoformat(),
-            'audio_processor': AudioProcessor(max_segment_duration_s=2.0),
+            'audio_processor': AudioProcessor(max_segment_duration_s=5.0),
             'transcription_stream': TranscriptionStream(
                 self.asr_model,
                 device='cuda' if torch.cuda.is_available() else 'cpu'
@@ -101,7 +101,7 @@ class WebSocketHandler:
             # Initialize client state
             self.connection_states[client_id] = {
                 'connected_at': datetime.utcnow().isoformat(),
-                'audio_processor': AudioProcessor(max_segment_duration_s=2.0),
+                'audio_processor': AudioProcessor(max_segment_duration_s=5.0),
                 'transcription_stream': TranscriptionStream(
                     self.asr_model,
                     device='cuda' if torch.cuda.is_available() else 'cpu'

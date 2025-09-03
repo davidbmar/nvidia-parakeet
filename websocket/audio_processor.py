@@ -32,7 +32,7 @@ class AudioProcessor:
         buffer_duration_s: float = 2.0,
         vad_threshold: float = 0.02,  # Improved VAD threshold based on 2025 best practices
         silence_duration_s: float = 0.5,
-        max_segment_duration_s: float = 2.0
+        max_segment_duration_s: float = 5.0
     ):
         """
         Initialize audio processor

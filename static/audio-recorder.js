@@ -41,8 +41,8 @@ class AudioRecorder {
                     channelCount: 1,
                     sampleRate: this.sampleRate,
                     echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
+                    noiseSuppression: false,   // Disabled for cleaner speech recognition
+                    autoGainControl: false     // Disabled for consistent audio levels
                 }
             });
             
