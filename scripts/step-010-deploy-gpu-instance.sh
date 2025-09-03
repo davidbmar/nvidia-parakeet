@@ -164,33 +164,64 @@ echo -e "${GREEN}=== Step 2: Creating Security Group ===${NC}"
 if [ -z "$SECURITY_GROUP_ID" ] || [ "$SECURITY_GROUP_ID" = "" ]; then
     SECURITY_GROUP_NAME="${SECURITY_GROUP_NAME:-rnnt-production-sg}"
     
-    echo "Creating security group: $SECURITY_GROUP_NAME"
-    SECURITY_GROUP_ID=$(aws ec2 create-security-group \
-        --group-name "$SECURITY_GROUP_NAME" \
-        --description "Production RNN-T Transcription Server" \
+    # Check if security group already exists
+    echo "Checking for existing security group: $SECURITY_GROUP_NAME"
+    EXISTING_SG_ID=$(aws ec2 describe-security-groups \
+        --group-names "$SECURITY_GROUP_NAME" \
         --region "$AWS_REGION" \
-        --query 'GroupId' \
-        --output text)
+        --query 'SecurityGroups[0].GroupId' \
+        --output text 2>/dev/null || echo "")
     
-    echo -e "${GREEN}✅ Security group created: $SECURITY_GROUP_ID${NC}"
+    if [ -n "$EXISTING_SG_ID" ] && [ "$EXISTING_SG_ID" != "" ] && [ "$EXISTING_SG_ID" != "None" ]; then
+        echo -e "${YELLOW}⚠️  Security group already exists: $EXISTING_SG_ID${NC}"
+        SECURITY_GROUP_ID="$EXISTING_SG_ID"
+    else
+        echo "Creating new security group: $SECURITY_GROUP_NAME"
+        SECURITY_GROUP_ID=$(aws ec2 create-security-group \
+            --group-name "$SECURITY_GROUP_NAME" \
+            --description "Production RNN-T Transcription Server" \
+            --region "$AWS_REGION" \
+            --query 'GroupId' \
+            --output text)
+    fi
     
-    # Add SSH rule
-    echo "Adding SSH access rule..."
-    aws ec2 authorize-security-group-ingress \
-        --group-id "$SECURITY_GROUP_ID" \
-        --protocol tcp \
-        --port 22 \
-        --cidr 0.0.0.0/0 \
-        --region "$AWS_REGION"
+    echo -e "${GREEN}✅ Security group ready: $SECURITY_GROUP_ID${NC}"
     
-    # Add RNN-T server rule
-    echo "Adding RNN-T server access rule (port 8000)..."
-    aws ec2 authorize-security-group-ingress \
-        --group-id "$SECURITY_GROUP_ID" \
-        --protocol tcp \
-        --port 8000 \
-        --cidr 0.0.0.0/0 \
-        --region "$AWS_REGION"
+    # Check and add SSH rule if not exists
+    echo "Checking SSH access rule..."
+    if ! aws ec2 describe-security-group-rules \
+        --group-ids "$SECURITY_GROUP_ID" \
+        --region "$AWS_REGION" \
+        --query "SecurityGroupRules[?FromPort==\`22\`]" \
+        --output text 2>/dev/null | grep -q "22"; then
+        echo "Adding SSH access rule..."
+        aws ec2 authorize-security-group-ingress \
+            --group-id "$SECURITY_GROUP_ID" \
+            --protocol tcp \
+            --port 22 \
+            --cidr 0.0.0.0/0 \
+            --region "$AWS_REGION" 2>/dev/null || echo "   SSH rule may already exist"
+    else
+        echo "   SSH rule already exists"
+    fi
+    
+    # Check and add RNN-T server rule if not exists
+    echo "Checking RNN-T server access rule (port 8000)..."
+    if ! aws ec2 describe-security-group-rules \
+        --group-ids "$SECURITY_GROUP_ID" \
+        --region "$AWS_REGION" \
+        --query "SecurityGroupRules[?FromPort==\`8000\`]" \
+        --output text 2>/dev/null | grep -q "8000"; then
+        echo "Adding RNN-T server access rule (port 8000)..."
+        aws ec2 authorize-security-group-ingress \
+            --group-id "$SECURITY_GROUP_ID" \
+            --protocol tcp \
+            --port 8000 \
+            --cidr 0.0.0.0/0 \
+            --region "$AWS_REGION" 2>/dev/null || echo "   RNN-T rule may already exist"
+    else
+        echo "   RNN-T rule already exists"
+    fi
     
     # Update .env file
     sed -i "s/SECURITY_GROUP_ID=\".*\"/SECURITY_GROUP_ID=\"$SECURITY_GROUP_ID\"/" "$ENV_FILE"

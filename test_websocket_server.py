@@ -9,9 +9,11 @@ import json
 import logging
 import sys
 import os
+from pathlib import Path
 
 # Add project directory to path
-sys.path.append('/home/ubuntu/event-b/nvidia-rnn-t-riva-nonmock-really-transcribe-')
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
 from websocket.websocket_handler import WebSocketHandler
 from websocket.transcription_stream import TranscriptionStream

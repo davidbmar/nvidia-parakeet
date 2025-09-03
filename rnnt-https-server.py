@@ -16,6 +16,7 @@ import asyncio
 import logging
 import sys
 import os
+import time
 from pathlib import Path
 
 # Add project root to Python path
@@ -28,16 +29,32 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 
+# Model imports
+import torch
+from speechbrain.pretrained import EncoderDecoderASR
+
 # Our optimized WebSocket components
 from websocket.websocket_handler import WebSocketHandler
 
 # Setup logging
+# Try to use /opt/rnnt/logs, fallback to home directory if not writable
+log_file_path = '/opt/rnnt/logs/https-server.log'
+try:
+    os.makedirs('/opt/rnnt/logs', exist_ok=True)
+    with open(log_file_path, 'a') as f:
+        pass  # Test write permissions
+except (PermissionError, OSError):
+    # Fallback to home directory
+    alt_log_dir = os.path.expanduser('~/rnnt/logs')
+    os.makedirs(alt_log_dir, exist_ok=True)
+    log_file_path = os.path.join(alt_log_dir, 'https-server.log')
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('/opt/rnnt/logs/https-server.log', mode='a')
+        logging.FileHandler(log_file_path, mode='a')
     ]
 )
 logger = logging.getLogger(__name__)
@@ -49,22 +66,58 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Global WebSocket handler
+# Global WebSocket handler and model
 websocket_handler = None
+asr_model = None
+
+# Model configuration from environment
+RNNT_MODEL_SOURCE = os.getenv('RNNT_MODEL_SOURCE', 'speechbrain/asr-conformer-transformerlm-librispeech')
+RNNT_MODEL_CACHE_DIR = os.getenv('RNNT_MODEL_CACHE_DIR', '/opt/rnnt/models')
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    global websocket_handler
+    global websocket_handler, asr_model
     
     logger.info("🚀 Starting RNN-T HTTPS Server with optimized components...")
     
-    # Create logs directory
-    os.makedirs('/opt/rnnt/logs', exist_ok=True)
-    
-    # Initialize WebSocket handler with our fixes
+    # Create necessary directories
     try:
-        websocket_handler = WebSocketHandler()
+        os.makedirs('/opt/rnnt/logs', exist_ok=True)
+        os.makedirs(RNNT_MODEL_CACHE_DIR, exist_ok=True)
+    except PermissionError:
+        # Fallback to home directory if /opt/rnnt is not writable
+        alt_log_dir = os.path.expanduser('~/rnnt/logs')
+        os.makedirs(alt_log_dir, exist_ok=True)
+        logger.info(f"Using alternative log directory: {alt_log_dir}")
+    
+    # Load the RNN-T model
+    try:
+        logger.info(f"📦 Loading SpeechBrain RNN-T model: {RNNT_MODEL_SOURCE}")
+        model_start_time = time.time()
+        
+        # Determine device
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"🖥️  Using device: {device}")
+        
+        # Load model
+        asr_model = EncoderDecoderASR.from_hparams(
+            source=RNNT_MODEL_SOURCE,
+            savedir=RNNT_MODEL_CACHE_DIR,
+            run_opts={"device": device}
+        )
+        
+        model_load_time = time.time() - model_start_time
+        logger.info(f"✅ Model loaded successfully in {model_load_time:.2f} seconds")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to load RNN-T model: {e}")
+        logger.error("Server will start but transcription will not work")
+        # Don't exit - allow server to start for debugging
+    
+    # Initialize WebSocket handler with loaded model
+    try:
+        websocket_handler = WebSocketHandler(asr_model)
         logger.info("✅ WebSocket handler initialized with optimizations")
     except Exception as e:
         logger.error(f"❌ Failed to initialize WebSocket handler: {e}")
@@ -178,15 +231,29 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 if __name__ == "__main__":
-    # SSL Configuration
-    ssl_cert_path = "/opt/rnnt/server.crt"
-    ssl_key_path = "/opt/rnnt/server.key"
+    # SSL Configuration - try multiple locations
+    ssl_locations = [
+        ("/opt/rnnt/server.crt", "/opt/rnnt/server.key"),
+        (os.path.expanduser("~/rnnt/certs/server.crt"), os.path.expanduser("~/rnnt/certs/server.key")),
+        (os.path.join(PROJECT_ROOT, "certs", "server.crt"), os.path.join(PROJECT_ROOT, "certs", "server.key"))
+    ]
     
-    if not os.path.exists(ssl_cert_path) or not os.path.exists(ssl_key_path):
-        logger.error(f"❌ SSL certificates not found:")
-        logger.error(f"   Certificate: {ssl_cert_path}")
-        logger.error(f"   Key: {ssl_key_path}")
-        logger.error("Run the HTTPS setup script first!")
+    ssl_cert_path = None
+    ssl_key_path = None
+    
+    # Find SSL certificates
+    for cert_path, key_path in ssl_locations:
+        if os.path.exists(cert_path) and os.path.exists(key_path):
+            ssl_cert_path = cert_path
+            ssl_key_path = key_path
+            break
+    
+    if not ssl_cert_path or not ssl_key_path:
+        logger.error(f"❌ SSL certificates not found in any of these locations:")
+        for cert_path, key_path in ssl_locations:
+            logger.error(f"   - {cert_path}")
+        logger.error("")
+        logger.error("Run: ./scripts/generate-ssl-cert.sh to create certificates")
         sys.exit(1)
     
     logger.info(f"🔒 SSL Certificate: {ssl_cert_path}")
