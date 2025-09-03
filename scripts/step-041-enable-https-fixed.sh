@@ -27,6 +27,10 @@ log_error() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $*" | tee -a "$LOG_FILE" >&2
 }
 
+log_success() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [SUCCESS] $*" | tee -a "$LOG_FILE"
+}
+
 # Start logging
 log "=== Step 041: Enable HTTPS (Fixed Version) Started ==="
 log "Log file: $LOG_FILE"
