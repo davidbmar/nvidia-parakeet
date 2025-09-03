@@ -94,8 +94,36 @@ class WebSocketHandler:
             client_id: Client identifier
         """
         try:
-            # Connect the client
-            await self.connect(websocket, client_id)
+            # Don't call connect() - FastAPI already accepted the connection
+            # Just initialize the client state directly
+            self.active_connections[client_id] = websocket
+            
+            # Initialize client state
+            self.connection_states[client_id] = {
+                'connected_at': datetime.utcnow().isoformat(),
+                'audio_processor': AudioProcessor(max_segment_duration_s=2.0),
+                'transcription_stream': TranscriptionStream(
+                    self.asr_model,
+                    device='cuda' if torch.cuda.is_available() else 'cpu'
+                ),
+                'total_audio_duration': 0.0,
+                'total_segments': 0,
+                'is_recording': False
+            }
+            
+            # Send welcome message
+            await self.send_message(websocket, {
+                'type': 'connection',
+                'status': 'connected',
+                'client_id': client_id,
+                'message': 'WebSocket connected successfully',
+                'protocol_version': '1.0',
+                'supported_audio_formats': {
+                    'sample_rates': [16000, 44100, 48000],
+                    'encodings': ['pcm16', 'float32'],
+                    'channels': [1, 2]
+                }
+            })
             
             # Handle messages until disconnection
             while True:
