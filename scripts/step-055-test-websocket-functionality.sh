@@ -78,11 +78,17 @@ import asyncio
 import websockets
 import json
 import sys
+import ssl
 
 async def test_ws():
     try:
-        uri = 'ws://localhost:8000/ws/transcribe?client_id=test'
-        async with websockets.connect(uri, timeout=10) as ws:
+        uri = 'wss://localhost/ws/transcribe?client_id=test'
+        # Create SSL context that ignores certificate verification
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        async with websockets.connect(uri, ssl=ssl_context, timeout=10) as ws:
             welcome = await asyncio.wait_for(ws.recv(), timeout=5)
             data = json.loads(welcome)
             if data.get('type') == 'connection':
@@ -114,10 +120,13 @@ echo ""
 echo -e "${GREEN}✅ WebSocket server is deployed and functional!${NC}"
 echo ""
 echo -e "${YELLOW}🌐 Access URLs:${NC}"
-echo "• Demo UI: http://$GPU_INSTANCE_IP:8000/static/index.html"
-echo "• WebSocket API: ws://$GPU_INSTANCE_IP:8000/ws/transcribe"
-echo "• REST API: http://$GPU_INSTANCE_IP:8000"
-echo "• Examples: http://$GPU_INSTANCE_IP:8000/examples/"
+echo "• Demo UI: https://$GPU_INSTANCE_IP/static/index.html"
+echo "• WebSocket API: wss://$GPU_INSTANCE_IP/ws/transcribe"
+echo "• REST API: https://$GPU_INSTANCE_IP/"
+echo "• Examples: https://$GPU_INSTANCE_IP/examples/"
+echo ""
+echo -e "${YELLOW}📝 HTTP Fallback (if needed):${NC}"
+echo "• HTTP API: http://$GPU_INSTANCE_IP:8000/"
 echo ""
 echo -e "${BLUE}🚀 Ready for Development:${NC}"
 echo "• Open the demo UI to test real-time transcription"
