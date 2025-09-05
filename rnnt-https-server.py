@@ -29,9 +29,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 
-# Model imports
-import torch
-from speechbrain.pretrained import EncoderDecoderASR
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
 
 # Our optimized WebSocket components
 from websocket.websocket_handler import WebSocketHandler
@@ -66,38 +66,29 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Global WebSocket handler and model
+# Global WebSocket handler
 websocket_handler = None
-asr_model = None
 
-# Model configuration from environment
-RNNT_MODEL_SOURCE = os.getenv('RNNT_MODEL_SOURCE', 'speechbrain/asr-conformer-transformerlm-librispeech')
-RNNT_MODEL_CACHE_DIR = os.getenv('RNNT_MODEL_CACHE_DIR', '/opt/rnnt/models')
+# Riva configuration from environment
+RIVA_HOST = os.getenv('RIVA_HOST', 'localhost')
+RIVA_PORT = os.getenv('RIVA_PORT', '50051')
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    global websocket_handler, asr_model
+    global websocket_handler
     
-    logger.info("🚀 Starting RNN-T HTTPS Server with optimized components...")
+    logger.info("🚀 Starting Riva ASR HTTPS Server...")
+    logger.info(f"Riva ASR Server: {RIVA_HOST}:{RIVA_PORT}")
     
     # Create necessary directories
     try:
         os.makedirs('/opt/rnnt/logs', exist_ok=True)
-        os.makedirs(RNNT_MODEL_CACHE_DIR, exist_ok=True)
     except PermissionError:
         # Fallback to home directory if /opt/rnnt is not writable
         alt_log_dir = os.path.expanduser('~/rnnt/logs')
         os.makedirs(alt_log_dir, exist_ok=True)
         logger.info(f"Using alternative log directory: {alt_log_dir}")
-    
-    # Load the RNN-T model
-    try:
-        logger.info(f"📦 Loading SpeechBrain RNN-T model: {RNNT_MODEL_SOURCE}")
-        model_start_time = time.time()
-        
-        # Determine device
-        device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"🖥️  Using device: {device}")
         
         # Load model
@@ -106,19 +97,13 @@ async def startup_event():
             savedir=RNNT_MODEL_CACHE_DIR,
             run_opts={"device": device}
         )
-        
-        model_load_time = time.time() - model_start_time
-        logger.info(f"✅ Model loaded successfully in {model_load_time:.2f} seconds")
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to load RNN-T model: {e}")
-        logger.error("Server will start but transcription will not work")
-        # Don't exit - allow server to start for debugging
     
-    # Initialize WebSocket handler with loaded model
+    # Initialize WebSocket handler (Riva client will be initialized on first connection)
     try:
-        websocket_handler = WebSocketHandler(asr_model)
-        logger.info("✅ WebSocket handler initialized with optimizations")
+        # Pass None for model since we're using Riva
+        websocket_handler = WebSocketHandler(None)
+        logger.info("✅ WebSocket handler initialized for Riva ASR")
+        logger.info(f"📡 Will connect to Riva at {RIVA_HOST}:{RIVA_PORT}")
     except Exception as e:
         logger.error(f"❌ Failed to initialize WebSocket handler: {e}")
         sys.exit(1)
@@ -129,15 +114,16 @@ async def startup_event():
 async def root():
     """Root endpoint"""
     return {
-        "service": "RNN-T Production HTTPS Server", 
+        "service": "Riva ASR WebSocket Server", 
         "status": "active",
-        "version": "1.0.0",
+        "version": "2.0.0",
+        "riva_host": f"{RIVA_HOST}:{RIVA_PORT}",
         "features": [
             "Real-time WebSocket transcription",
-            "SpeechBrain RNN-T model",
-            "Mixed precision inference (2x speedup)", 
+            "NVIDIA Riva Parakeet RNNT model",
+            "Remote GPU processing via gRPC", 
             "Enhanced VAD with ZCR",
-            "CUDA memory optimization",
+            "Word-level timing from Riva",
             "SSL/HTTPS support"
         ]
     }
@@ -146,12 +132,11 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     try:
-        # Check if model is loaded
-        model_status = "loaded" if websocket_handler and websocket_handler.asr_model else "not_loaded"
+        # Check if handler is ready (Riva connection tested on first use)
         
         return {
             "status": "healthy",
-            "model_status": model_status,
+            "riva_server": f"{RIVA_HOST}:{RIVA_PORT}",
             "websocket_handler": "active" if websocket_handler else "inactive"
         }
     except Exception as e:

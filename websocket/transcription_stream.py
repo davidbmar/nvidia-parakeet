@@ -1,58 +1,50 @@
 #!/usr/bin/env python3
 """
-Streaming Transcription Handler for RNN-T
-Manages continuous transcription with partial results
+Streaming Transcription Handler with Riva ASR
+Manages continuous transcription with partial results using NVIDIA Riva
 """
 
 import asyncio
 import time
 import numpy as np
-import torch
 from typing import Optional, Dict, Any, AsyncGenerator
 from datetime import datetime
 import logging
+import sys
+import os
+
+# Add src directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  
+from src.asr import RivaASRClient
 
 logger = logging.getLogger(__name__)
 
 
 class TranscriptionStream:
     """
-    Manages streaming transcription with the RNN-T model
+    Manages streaming transcription with NVIDIA Riva ASR
     
     Features:
-    - Partial result generation
-    - Word-level timing alignment
-    - Confidence scoring
-    - Result buffering and merging
+    - Partial result generation via Riva streaming
+    - Word-level timing alignment from Riva
+    - Confidence scoring from Riva models
+    - Remote GPU processing via gRPC
     """
     
-    def __init__(self, asr_model, device: str = 'cuda'):
+    def __init__(self, asr_model=None, device: str = 'cuda'):
         """
-        Initialize transcription stream with optimizations
+        Initialize transcription stream with Riva client
         
         Args:
-            asr_model: Loaded SpeechBrain RNN-T model
-            device: Device for inference (cuda/cpu)
+            asr_model: Ignored (kept for compatibility)
+            device: Ignored (Riva handles device management)
         """
-        self.asr_model = asr_model
-        self.device = device
+        # Initialize Riva client instead of local model
+        self.riva_client = RivaASRClient()
+        self.connected = False
         
-        # Optimization: Enable mixed precision for 2x speedup
-        self.use_mixed_precision = device == 'cuda'
-        if self.use_mixed_precision:
-            logger.info("🚀 Enabling mixed precision (FP16) for 2x inference speedup")
-        
-        # Optimization: Pre-compile model for faster inference (PyTorch 2.0+)
-        try:
-            import torch
-            if hasattr(torch, 'compile') and device == 'cuda':
-                logger.info("⚡ Compiling model for optimized inference")
-                # Note: Actual compilation would happen during first inference
-                self.model_compiled = True
-            else:
-                self.model_compiled = False
-        except:
-            self.model_compiled = False
+        # Note: device parameter ignored as Riva runs on remote GPU
+        logger.info("Initializing TranscriptionStream with Riva ASR client")
         
         # Transcription state
         self.segment_id = 0
@@ -70,7 +62,7 @@ class TranscriptionStream:
         is_final: bool = False
     ) -> Dict[str, Any]:
         """
-        Transcribe audio segment
+        Transcribe audio segment using Riva ASR
         
         Args:
             audio_segment: Audio array to transcribe
@@ -83,53 +75,77 @@ class TranscriptionStream:
         start_time = time.time()
         
         try:
-            # Convert to tensor
-            audio_tensor = torch.from_numpy(audio_segment).unsqueeze(0)
-            
-            # Move to device
-            if self.device == 'cuda':
-                audio_tensor = audio_tensor.cuda()
+            # Ensure connected to Riva
+            if not self.connected:
+                self.connected = await self.riva_client.connect()
+                if not self.connected:
+                    return self._error_result("Failed to connect to Riva ASR server")
             
             # Get audio duration
             duration = len(audio_segment) / sample_rate
             
-            # Run inference with optimizations
-            with torch.no_grad():
-                # Optimization: Use mixed precision if available
-                if self.use_mixed_precision:
-                    with torch.cuda.amp.autocast():
-                        transcription = self._run_inference(audio_tensor, sample_rate)
+            # Create audio generator for streaming
+            async def audio_generator():
+                # Convert numpy array to bytes (int16 format)
+                if audio_segment.dtype != np.int16:
+                    audio_int16 = (audio_segment * 32767).astype(np.int16)
                 else:
-                    transcription = self._run_inference(audio_tensor, sample_rate)
+                    audio_int16 = audio_segment
+                
+                # Yield entire segment as one chunk for offline-style processing
+                yield audio_int16.tobytes()
             
-            # Process transcription
-            result = self._process_transcription(
-                transcription,
-                duration,
-                is_final,
-                start_time
-            )
+            # Stream to Riva and collect results
+            result = None
+            async for event in self.riva_client.stream_transcribe(
+                audio_generator(),
+                sample_rate=sample_rate,
+                enable_partials=not is_final
+            ):
+                # Use the last event as result
+                result = event
+                
+                # For partial results, update state immediately
+                if not is_final and event.get('type') == 'partial':
+                    self.partial_transcript = event.get('text', '')
+            
+            # If no result, create empty result
+            if result is None:
+                result = {
+                    'type': 'transcription',
+                    'segment_id': self.segment_id,
+                    'text': '',
+                    'is_final': is_final,
+                    'words': [],
+                    'duration': round(duration, 3),
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            else:
+                # Ensure result has all required fields
+                result['duration'] = round(duration, 3)
+                result['is_final'] = is_final
+                result['segment_id'] = self.segment_id
             
             # Performance logging
             processing_time_s = (time.time() - start_time)
             rtf = processing_time_s / duration if duration > 0 else 0
-            logger.info(f"🚀 Performance: RTF={rtf:.2f}, {processing_time_s*1000:.0f}ms for {duration:.2f}s audio")
+            logger.info(f"🚀 Riva Performance: RTF={rtf:.2f}, {processing_time_s*1000:.0f}ms for {duration:.2f}s audio")
             
             # Update state
-            if is_final:
+            if is_final and result.get('text'):
                 self.final_transcripts.append(result['text'])
                 self.current_time_offset += duration
                 self.segment_id += 1
-            else:
-                self.partial_transcript = result['text']
+            elif not is_final:
+                self.partial_transcript = result.get('text', '')
             
             return result
             
         except Exception as e:
-            logger.error(f"Transcription error: {e}")
+            logger.error(f"Riva transcription error: {e}")
             return self._error_result(str(e))
     
-    def _run_inference(self, audio_tensor: torch.Tensor, sample_rate: int) -> str:
+    def _run_inference_legacy(self, audio_tensor, sample_rate: int) -> str:
         """
         Run RNN-T inference on audio tensor
         
@@ -218,22 +234,8 @@ class TranscriptionStream:
         except Exception as e:
             logger.error(f"Transcription error: {e}")
             
-            # Optimization: Try lightweight fallback before giving up
-            try:
-                # Simple energy-based confidence check
-                energy = np.sqrt(np.mean(audio_numpy ** 2)) if 'audio_numpy' in locals() else 0
-                if energy < 0.001:  # Very quiet audio
-                    return ""  # Return empty for silence
-                else:
-                    return "[audio processing error]"  # Indicate there was content
-            except:
-                pass
-            
-            # Clean up CUDA memory on error
-            if self.device == 'cuda':
-                torch.cuda.empty_cache()
-                import gc
-                gc.collect()
+            # Fallback for error cases
+            return "[transcription error]"
             
             # Return simple placeholder
             return "transcription error - check logs"
@@ -367,4 +369,13 @@ class TranscriptionStream:
         self.final_transcripts = []
         self.word_timings = []
         self.current_time_offset = 0.0
+        # Reset Riva client segment counter
+        if hasattr(self, 'riva_client'):
+            self.riva_client.segment_id = 0
         logger.debug("TranscriptionStream reset")
+    
+    async def close(self):
+        """Close Riva connection"""
+        if hasattr(self, 'riva_client'):
+            await self.riva_client.close()
+        self.connected = False
