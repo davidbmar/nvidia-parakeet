@@ -1,120 +1,180 @@
-# Troubleshooting Guide - Production RNN-T Server
+# Troubleshooting Guide - NVIDIA Parakeet Riva ASR
 
-## Quick Diagnostics
+## 🔍 Quick Diagnostics with Logging Framework
 
-### Server Status Check
+This system includes **comprehensive structured logging** that makes troubleshooting straightforward.
+
+### 📋 First Steps - Check the Logs
 ```bash
-# SSH into your instance
-ssh -i your-key.pem ubuntu@your-instance-ip
+# 1. View recent deployment logs
+ls -lat logs/ | head -10
 
-# Check service status
-sudo systemctl status rnnt-server
+# 2. Check the most recent failed script
+cat logs/[script-name]_[timestamp]_pid[pid].log
 
-# View recent logs
-sudo journalctl -u rnnt-server -n 50
+# 3. Quick driver/system status
+./scripts/check-driver-status.sh
+
+# 4. Test logging framework
+./scripts/test-logging.sh
 ```
 
-### Health Check
+### 🏥 System Health Checks
 ```bash
-# Test server response
-curl http://your-instance-ip:8000/health
+# Riva server health
+curl http://your-riva-server:8000/health
 
-# Test basic connectivity
-curl http://your-instance-ip:8000/
+# WebSocket server health  
+curl http://your-websocket-server:8443/health
+
+# GPU status via logging utility
+./scripts/check-driver-status.sh
 ```
 
-## Common Issues and Solutions
+## 📊 Understanding the Logging System
 
-### 1. Server Won't Start
-
-#### Symptoms
-- `systemctl status rnnt-server` shows "failed"
-- No response from server endpoints
-- Service keeps restarting
-
-#### Diagnosis
-```bash
-# Check detailed logs
-sudo journalctl -u rnnt-server -f
-
-# Check if port is in use
-sudo netstat -tlnp | grep :8000
-
-# Verify Python environment
-cd /opt/rnnt && source venv/bin/activate && python --version
+### Log File Structure
+Each script generates a detailed log file:
+```
+logs/riva-040-setup-riva-server_20250906_145012_pid12347.log
 ```
 
-#### Solutions
+### Log File Contents
+1. **Header**: Script info, PID, environment, command line
+2. **Sections**: Clearly marked operations (=== SECTION START ===)
+3. **Commands**: Every command executed with timing and output
+4. **Errors**: Full error context with stack traces
+5. **Summary**: Final status and recommendations
 
-**Missing Dependencies:**
+### Reading Log Files
 ```bash
-cd /opt/rnnt
-source venv/bin/activate
-pip install -r requirements.txt
+# View complete log session
+cat logs/script-name_*.log
+
+# Look for errors
+grep -A5 -B5 "ERROR\|FATAL" logs/script-name_*.log
+
+# Find specific sections
+grep -A10 "=== SECTION START:" logs/script-name_*.log
+
+# Check timing information
+grep "completed in\|failed after" logs/script-name_*.log
 ```
 
-**GPU Driver Issues:**
-```bash
-# Check GPU
-nvidia-smi
+## 🚨 Common Issues and Solutions
 
-# Reinstall drivers if needed
-sudo ubuntu-drivers autoinstall
-sudo reboot
+### 1. NVIDIA Driver Issues
+
+#### Symptoms from Logs
+```
+[ERROR] Could not determine NVIDIA driver version
+[ERROR] NVIDIA drivers may not be installed or GPU not detected
+[ERROR] nvidia-smi command not found
 ```
 
-**Permission Issues:**
+#### Solution with Logging
 ```bash
-sudo chown -R ubuntu:ubuntu /opt/rnnt
-sudo chmod +x /opt/rnnt/rnnt-server.py
+# Use comprehensive driver check
+./scripts/check-driver-status.sh
+
+# Review driver transfer logs
+cat logs/riva-025-transfer-nvidia-drivers_*.log
+
+# Check specific driver installation section
+grep -A20 "=== SECTION START: Driver Installation ===" logs/riva-025-*.log
 ```
 
-### 2. Model Loading Fails
-
-#### Symptoms
-- Health endpoint shows `"model_loaded": false`
-- Transcription requests return 503 errors
-- Logs show model download/loading errors
-
-#### Diagnosis
+#### Detailed Solutions
+**Check Driver Status:**
 ```bash
-# Check model directory
-ls -la /opt/rnnt/models/
+# Run comprehensive driver diagnostics
+./scripts/check-driver-status.sh
 
-# Test model loading manually
-cd /opt/rnnt
-source venv/bin/activate
-python -c "from speechbrain.inference import EncoderDecoderASR; print('Import OK')"
+# Look for this in the logs:
+[SUCCESS] Driver installation appears successful
+[INFO] Next step: ./scripts/riva-040-setup-riva-server.sh
 ```
 
-#### Solutions
-
-**Network/Download Issues:**
+**Manual Driver Update:**
 ```bash
-# Clear model cache and retry
-rm -rf /opt/rnnt/models/*
-sudo systemctl restart rnnt-server
+# Re-run driver installation with full logging
+./scripts/riva-025-transfer-nvidia-drivers.sh
+
+# Monitor the logs in real-time
+tail -f logs/riva-025-transfer-nvidia-drivers_*.log
 ```
 
-**Memory Issues:**
-```bash
-# Check available memory
-free -h
+### 2. Riva Server Startup Issues
 
-# Check GPU memory
-nvidia-smi
-
-# Consider using CPU mode temporarily
-export CUDA_VISIBLE_DEVICES=""
-sudo systemctl restart rnnt-server
+#### Symptoms from Logs
+```
+[ERROR] Cannot connect to server: [IP_ADDRESS]
+[ERROR] Riva server failed to start
+[SECTION] ❌ Riva Server Setup failed: CONTAINER_START_FAILED
 ```
 
-**SpeechBrain Version Issues:**
+#### Solution with Logging
 ```bash
-cd /opt/rnnt
-source venv/bin/activate
-pip uninstall speechbrain
-pip install speechbrain>=1.0.0
+# Check Riva server setup logs
+cat logs/riva-040-setup-riva-server_*.log
+
+# Look for specific failure points
+grep -A10 "SECTION.*failed" logs/riva-040-*.log
+
+# Check Docker/GPU availability section
+grep -A15 "=== SECTION START: Docker and NVIDIA Container Toolkit ===" logs/riva-040-*.log
+```
+
+#### Detailed Solutions
+
+**Check Container Status:**
+```bash
+# SSH to the server and check Docker containers
+ssh -i ~/.ssh/[key].pem ubuntu@[server-ip]
+docker ps | grep riva-server
+docker logs riva-server
+```
+
+**GPU/CUDA Issues:**
+```bash
+# Check GPU availability on server
+./scripts/check-driver-status.sh
+
+# Look for these success indicators:
+[SUCCESS] GPU accessible
+[INFO] GPU detected: Tesla T4, 15109 MiB
+[SUCCESS] Driver version matches target
+```
+
+**Docker Issues:**
+```bash
+# Check Docker installation logs
+grep -A10 "Installing Docker and NVIDIA Container Toolkit" logs/riva-040-*.log
+
+# Look for NVIDIA runtime
+ssh -i ~/.ssh/[key].pem ubuntu@[server-ip]
+docker info | grep nvidia
+```
+
+### 3. Configuration Issues
+
+#### Symptoms from Logs
+```
+[FATAL] Configuration validation failed
+[ERROR] Required configuration variable missing: GPU_INSTANCE_ID
+[ERROR] Missing required configuration variables: SSH_KEY_NAME
+```
+
+#### Solution with Logging
+```bash
+# Re-run configuration setup
+./scripts/riva-000-setup-configuration.sh
+
+# Check configuration validation section
+grep -A10 "=== SECTION START: Configuration Validation ===" logs/riva-000-*.log
+
+# Verify .env file
+cat .env | grep -E "(GPU_INSTANCE|SSH_KEY|RIVA_HOST)"
 ```
 
 ### 3. Transcription Fails
@@ -414,41 +474,90 @@ echo "net.core.somaxconn = 65536" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 ```
 
-## Getting Help
+## 📋 Advanced Debugging with Logs
+
+### Complete Deployment Troubleshooting
+```bash
+# 1. Find the failing script
+ls -lat logs/ | grep -v SUCCESS
+
+# 2. Examine the failure in detail
+FAILED_LOG=$(ls -t logs/*_*.log | head -1)
+echo "Analyzing: $FAILED_LOG"
+cat "$FAILED_LOG"
+
+# 3. Look for the specific error
+grep -A5 -B5 "ERROR\|FATAL" "$FAILED_LOG"
+
+# 4. Find which section failed
+grep "SECTION.*failed" "$FAILED_LOG"
+
+# 5. Check error context
+grep -A20 "=== ERROR SUMMARY ===" "$FAILED_LOG"
+```
+
+### Log Pattern Analysis
+**Look for these patterns in logs:**
+
+**Success Patterns:**
+```
+[SUCCESS] Configuration validation completed
+[SUCCESS] SSH connection successful  
+[SUCCESS] Driver installation appears successful
+[SUCCESS] Riva server is running
+✅ [Section Name] completed
+```
+
+**Warning Patterns:**
+```
+[WARN] Driver version mismatch - needs updating
+[WARN] No installation success marker found
+⚠️  [Warning message]
+```
+
+**Error Patterns:**
+```
+[ERROR] Cannot connect to server
+[FATAL] Configuration validation failed
+❌ [Section Name] failed: [REASON]
+=== ERROR SUMMARY === 
+```
+
+## 🆘 Getting Help with Logs
 
 ### Information to Collect
-Before seeking support, collect:
+Before seeking support, run these commands and provide the output:
 
-1. **System Info:**
-   ```bash
-   # Instance details
-   curl -s http://169.254.169.254/latest/meta-data/instance-type
-   nvidia-smi
-   cat /etc/os-release
-   ```
+```bash
+# 1. Recent deployment status
+ls -lat logs/ | head -10
 
-2. **Service Status:**
-   ```bash
-   sudo systemctl status rnnt-server
-   sudo journalctl -u rnnt-server -n 100 --no-pager
-   ```
+# 2. System status
+./scripts/check-driver-status.sh
 
-3. **Configuration:**
-   ```bash
-   # Remove sensitive data first!
-   cat /opt/rnnt/.env | grep -v KEY | grep -v SECRET
-   ```
+# 3. Failed script details
+cat logs/[most-recent-failed-script]_*.log | grep -A5 -B5 "ERROR\|FATAL"
 
-4. **Test Results:**
-   ```bash
-   curl -s http://localhost:8000/health | jq .
-   ```
+# 4. Environment info (remove sensitive data)
+cat .env | grep -v -E "(KEY|SECRET|TOKEN)"
+
+# 5. System info  
+uname -a && nvidia-smi --query-gpu=name,driver_version --format=csv
+```
+
+### Logging Framework Benefits
+✅ **Complete Execution History**: Every command with timing and output  
+✅ **Section-Based Organization**: Easy to find specific failure points  
+✅ **Error Context**: Full stack traces and environment information  
+✅ **Remote Debugging**: Detailed SSH operation logs  
+✅ **Resource Tracking**: Memory, disk, and GPU usage monitoring  
+✅ **Automated Analysis**: Structured logs for easy parsing and analysis  
 
 ### Support Channels
-- Check GitHub issues for similar problems
-- Review documentation and API reference
-- Test with minimal examples first
-- Provide complete error messages and logs
+- **GitHub Issues**: Include relevant log sections (sanitized of secrets)
+- **Log Analysis**: Use grep patterns above to find specific issues
+- **Reproduction**: Logs contain exact commands for reproducing issues
+- **Context**: Environment, timing, and resource information included
 
 ## Preventive Measures
 

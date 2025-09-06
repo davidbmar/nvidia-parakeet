@@ -1,31 +1,43 @@
 # NVIDIA Parakeet Riva ASR Deployment System
 
-This repository provides a complete, repeatable infrastructure deployment system for NVIDIA Parakeet RNNT via Riva ASR. The system supports multiple deployment strategies and provides step-by-step automation.
+This repository provides a complete, repeatable infrastructure deployment system for NVIDIA Parakeet RNNT via Riva ASR with **comprehensive logging and debugging capabilities**. The system supports multiple deployment strategies and provides step-by-step automation with detailed monitoring.
 
-## 🚀 Quick Start
+## 🚀 Quick Start with Comprehensive Logging
 
 ### 1. Run Complete Deployment (Recommended)
 ```bash
-# Interactive configuration and full deployment
+# Interactive configuration and full deployment with logging
 ./scripts/riva-000-run-complete-deployment.sh
+
+# All logs saved automatically in: logs/
 ```
 
-### 2. Step-by-Step Deployment
+### 2. Step-by-Step Deployment with Monitoring
 ```bash
-# Step 1: Configure deployment
+# Step 1: Configure deployment (with validation)
 ./scripts/riva-000-setup-configuration.sh
 
-# Step 2a: Deploy AWS GPU instance (Strategy 1 only)
+# Step 2: Deploy AWS GPU instance (Strategy 1 only)
 ./scripts/riva-010-deploy-gpu-instance.sh
 
-# Step 2b: Setup Riva server (all strategies)
-./scripts/riva-020-setup-riva-server.sh
+# Step 3: Configure security and access
+./scripts/riva-015-configure-security-access.sh
 
-# Step 3: Deploy WebSocket application
-./scripts/riva-030-deploy-websocket-app.sh
+# Step 4: Update NVIDIA drivers (if needed)
+./scripts/riva-025-transfer-nvidia-drivers.sh
 
-# Step 4: Test complete system
-./scripts/riva-040-test-system.sh
+# Step 5: Setup Riva server with Parakeet model
+./scripts/riva-040-setup-riva-server.sh
+
+# Step 6: Deploy WebSocket application
+./scripts/riva-045-deploy-websocket-app.sh
+
+# Step 7: Test complete integration
+./scripts/riva-055-test-integration.sh
+
+# Debug utilities available:
+./scripts/check-driver-status.sh    # Quick system status
+./scripts/test-logging.sh          # Test logging framework
 ```
 
 ## 🏗️ Deployment Strategies
