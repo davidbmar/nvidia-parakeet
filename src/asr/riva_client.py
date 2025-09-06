@@ -547,7 +547,7 @@ class RivaASRClient:
                     # Emit partial result
                     yield {
                         'type': TranscriptionEventType.PARTIAL.value,
-                        'transcript': current_partial.strip(),
+                        'text': current_partial.strip(),
                         'confidence': 0.85,
                         'is_final': False,
                         'timestamp': time.time(),
@@ -571,7 +571,7 @@ class RivaASRClient:
         # Emit final result
         yield {
             'type': TranscriptionEventType.FINAL.value,
-            'transcript': phrase,
+            'text': phrase,
             'confidence': 0.95,
             'is_final': True,
             'timestamp': time.time(),
