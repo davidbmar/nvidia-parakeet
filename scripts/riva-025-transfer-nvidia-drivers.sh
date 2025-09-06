@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 # NVIDIA Parakeet Riva ASR Deployment - Step 25: Transfer NVIDIA Drivers to GPU
 # This script transfers NVIDIA drivers to the GPU instance for installation
@@ -8,49 +7,32 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$PROJECT_ROOT/.env"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+# Load common logging framework
+source "$SCRIPT_DIR/common-logging.sh"
 
-echo -e "${BLUE}📤 NVIDIA Parakeet Riva ASR Deployment - Step 25: Transfer NVIDIA Drivers${NC}"
-echo "================================================================"
+# Start script with banner
+log_script_start "NVIDIA Parakeet Riva ASR Deployment - Step 25: Transfer NVIDIA Drivers"
 
-# Check if configuration exists
-if [ ! -f "$ENV_FILE" ]; then
-    echo -e "${RED}❌ Configuration file not found: $ENV_FILE${NC}"
-    echo "Run: ./scripts/riva-000-setup-configuration.sh"
+# Validate configuration
+REQUIRED_VARS=("GPU_INSTANCE_ID" "GPU_INSTANCE_IP" "SSH_KEY_NAME")
+if ! log_validate_config "$ENV_FILE" "${REQUIRED_VARS[@]}"; then
+    log_fatal "Configuration validation failed. Run: ./scripts/riva-000-setup-configuration.sh"
     exit 1
 fi
-
-# Source configuration
-source "$ENV_FILE"
 
 # Check if this is AWS deployment
 if [ "$DEPLOYMENT_STRATEGY" != "1" ]; then
-    echo -e "${YELLOW}⏭️  Skipping NVIDIA driver update (Strategy: $DEPLOYMENT_STRATEGY)${NC}"
-    echo "This step is only for AWS EC2 deployment (Strategy 1)"
+    log_info "Skipping NVIDIA driver update (Strategy: $DEPLOYMENT_STRATEGY)"
+    log_info "This step is only for AWS EC2 deployment (Strategy 1)"
     exit 0
 fi
 
-# Check required variables
-if [ -z "$GPU_INSTANCE_ID" ] || [ -z "$GPU_INSTANCE_IP" ] || [ -z "$SSH_KEY_NAME" ]; then
-    echo -e "${RED}❌ Missing required configuration${NC}"
-    echo "Please run previous steps first:"
-    echo "  1. ./scripts/riva-010-deploy-gpu-instance.sh"
-    echo "  2. ./scripts/riva-015-configure-security-access.sh"
-    exit 1
-fi
-
-echo "Configuration:"
-echo "  • Instance: $GPU_INSTANCE_ID ($GPU_INSTANCE_IP)"
-echo "  • SSH Key: $SSH_KEY_NAME"
-echo "  • Required Driver Version: ${NVIDIA_DRIVER_REQUIRED_VERSION:-545.23}"
-echo "  • Target Driver Version: ${NVIDIA_DRIVER_TARGET_VERSION:-550}"
-echo ""
+log_section_start "Configuration Summary"
+log_info "Instance: $GPU_INSTANCE_ID ($GPU_INSTANCE_IP)"
+log_info "SSH Key: $SSH_KEY_NAME"
+log_info "Required Driver Version: ${NVIDIA_DRIVER_REQUIRED_VERSION:-545.23}"
+log_info "Target Driver Version: ${NVIDIA_DRIVER_TARGET_VERSION:-550}"
+log_section_end "Configuration Summary"
 
 # Set SSH key path
 SSH_KEY_PATH="$HOME/.ssh/${SSH_KEY_NAME}.pem"
@@ -71,42 +53,49 @@ run_on_server() {
     local cmd="$1"
     local description="$2"
     
-    if [ -n "$description" ]; then
-        echo -e "${CYAN}📋 $description${NC}"
-    fi
-    
-    # Check if SSH key exists
+    # Use improved logging for remote execution
     if [ -f "$HOME/.ssh/${SSH_KEY_NAME}.pem" ]; then
-        ssh -i "$HOME/.ssh/${SSH_KEY_NAME}.pem" -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@$GPU_INSTANCE_IP "$cmd"
+        if [[ -n "$description" ]]; then
+            log_execute_remote "$description" "ubuntu@$GPU_INSTANCE_IP" "$cmd" "-i $HOME/.ssh/${SSH_KEY_NAME}.pem -o ConnectTimeout=30 -o StrictHostKeyChecking=no"
+        else
+            ssh -i "$HOME/.ssh/${SSH_KEY_NAME}.pem" -o ConnectTimeout=30 -o StrictHostKeyChecking=no "ubuntu@$GPU_INSTANCE_IP" "$cmd"
+        fi
     else
-        echo -e "${RED}❌ SSH key not found: $HOME/.ssh/${SSH_KEY_NAME}.pem${NC}"
-        echo "Run: ./scripts/riva-010-deploy-gpu-instance.sh"
+        log_error "SSH key not found: $HOME/.ssh/${SSH_KEY_NAME}.pem"
+        log_error "Run: ./scripts/riva-010-deploy-gpu-instance.sh"
         return 1
     fi
 }
 
 # Test SSH connectivity
-echo -e "${BLUE}🔍 Testing server connectivity...${NC}"
-if ! run_on_server "echo 'SSH connection successful'" "Testing connection"; then
-    echo -e "${RED}❌ Cannot connect to server: $GPU_INSTANCE_IP${NC}"
-    echo "Ensure the GPU instance is running and SSH key is correct"
+log_section_start "Connectivity Test"
+if ! log_test_connectivity "$GPU_INSTANCE_IP" 22 30 "SSH connectivity to GPU instance"; then
+    log_fatal "Cannot connect to server: $GPU_INSTANCE_IP"
+    log_error "Ensure the GPU instance is running and SSH key is correct"
     exit 1
 fi
 
-echo -e "${GREEN}✅ Server connectivity confirmed${NC}"
+# Test actual SSH command execution
+if ! run_on_server "echo 'SSH connection successful'" "Testing SSH command execution"; then
+    log_fatal "SSH command execution failed"
+    exit 1
+fi
+
+log_section_end "Connectivity Test"
 
 # Check current NVIDIA driver version
-echo -e "${BLUE}🧪 Checking current NVIDIA driver version...${NC}"
+log_section_start "Driver Version Check"
 
 CURRENT_DRIVER_VERSION=$(run_on_server "nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits 2>/dev/null || echo 'UNKNOWN'" "")
 
 if [ "$CURRENT_DRIVER_VERSION" = "UNKNOWN" ]; then
-    echo -e "${RED}❌ Could not determine NVIDIA driver version${NC}"
-    echo "NVIDIA drivers may not be installed or GPU not detected"
+    log_error "Could not determine NVIDIA driver version"
+    log_error "NVIDIA drivers may not be installed or GPU not detected"
+    log_section_end "Driver Version Check" "DRIVER_NOT_DETECTED"
     exit 1
 fi
 
-echo "Current NVIDIA driver version: $CURRENT_DRIVER_VERSION"
+log_info "Current NVIDIA driver version: $CURRENT_DRIVER_VERSION"
 
 # Compare version numbers
 compare_versions() {
@@ -134,47 +123,49 @@ compare_versions() {
 
 # Check if update is needed
 if compare_versions "$CURRENT_DRIVER_VERSION" "$NVIDIA_DRIVER_REQUIRED_VERSION"; then
-    echo -e "${GREEN}✅ NVIDIA driver version $CURRENT_DRIVER_VERSION is compatible (>= $NVIDIA_DRIVER_REQUIRED_VERSION)${NC}"
+    log_success "NVIDIA driver version $CURRENT_DRIVER_VERSION is compatible (>= $NVIDIA_DRIVER_REQUIRED_VERSION)"
     
     # Update status in .env
-    sed -i '/^NVIDIA_DRIVER_STATUS=/d' "$ENV_FILE"
-    echo "NVIDIA_DRIVER_STATUS=compatible" >> "$ENV_FILE"
-    echo "NVIDIA_DRIVER_CURRENT_VERSION=$CURRENT_DRIVER_VERSION" >> "$ENV_FILE"
+    log_execute "Updating driver status in configuration" "sed -i '/^NVIDIA_DRIVER_STATUS=/d' '$ENV_FILE' && echo 'NVIDIA_DRIVER_STATUS=compatible' >> '$ENV_FILE' && echo 'NVIDIA_DRIVER_CURRENT_VERSION=$CURRENT_DRIVER_VERSION' >> '$ENV_FILE'"
     
-    echo ""
-    echo -e "${GREEN}✅ NVIDIA Driver Check Complete!${NC}"
-    echo "No driver update required"
+    log_section_end "Driver Version Check"
+    log_success "NVIDIA Driver Check Complete - No driver update required"
     exit 0
 fi
 
-echo -e "${YELLOW}⚠️  Driver version $CURRENT_DRIVER_VERSION is older than required $NVIDIA_DRIVER_REQUIRED_VERSION${NC}"
-echo -e "${BLUE}📦 Updating NVIDIA drivers to version $NVIDIA_DRIVER_TARGET_VERSION...${NC}"
+log_warn "Driver version $CURRENT_DRIVER_VERSION is older than required $NVIDIA_DRIVER_REQUIRED_VERSION"
+log_info "Proceeding to update NVIDIA drivers to version $NVIDIA_DRIVER_TARGET_VERSION"
+log_section_end "Driver Version Check"
 
 # Check if S3 drivers are available
+log_section_start "S3 Driver Availability Check"
+
 S3_BUCKET="${NVIDIA_DRIVERS_S3_BUCKET:-dbm-cf-2-2b}"
 S3_PREFIX="${NVIDIA_DRIVERS_S3_PREFIX:-bintarball/nvidia-parakeet}"
 DRIVER_S3_LOCATION="${NVIDIA_DRIVERS_S3_LOCATION:-s3://$S3_BUCKET/$S3_PREFIX/drivers/v$NVIDIA_DRIVER_TARGET_VERSION/}"
 DRIVER_FILENAME="NVIDIA-Linux-x86_64-$NVIDIA_DRIVER_TARGET_VERSION.run"
 DRIVER_S3_PATH="$DRIVER_S3_LOCATION$DRIVER_FILENAME"
 
-echo -e "${BLUE}🔍 Checking for S3-stored drivers...${NC}"
-echo "Looking for: $DRIVER_S3_PATH"
+log_info "Checking for S3-stored drivers at: $DRIVER_S3_PATH"
 
-if aws s3api head-object --bucket "$S3_BUCKET" --key "$S3_PREFIX/drivers/v$NVIDIA_DRIVER_TARGET_VERSION/$DRIVER_FILENAME" &>/dev/null; then
-    echo -e "${GREEN}✓ Found drivers in S3: $DRIVER_S3_LOCATION${NC}"
+if log_execute "Checking S3 object existence" "aws s3api head-object --bucket '$S3_BUCKET' --key '$S3_PREFIX/drivers/v$NVIDIA_DRIVER_TARGET_VERSION/$DRIVER_FILENAME'"; then
+    log_success "Found drivers in S3: $DRIVER_S3_LOCATION"
     USE_S3_DRIVERS=true
+    log_section_end "S3 Driver Availability Check"
 else
-    echo -e "${YELLOW}⚠️  Drivers not found in S3, downloading them first...${NC}"
+    log_warn "Drivers not found in S3, will download them first"
+    log_section_end "S3 Driver Availability Check" "DRIVERS_NOT_FOUND"
     
     # Download drivers to S3
-    echo -e "${BLUE}📥 Downloading NVIDIA drivers to S3...${NC}"
+    log_section_start "Driver Download to S3"
     
     # Check if bucket is accessible
-    if ! aws s3api head-bucket --bucket "$S3_BUCKET" 2>/dev/null; then
-        echo -e "${RED}❌ Cannot access S3 bucket: $S3_BUCKET${NC}"
-        echo "Please ensure the bucket exists and you have access to it"
-        echo "Falling back to repository installation..."
+    if ! log_execute "Checking S3 bucket accessibility" "aws s3api head-bucket --bucket '$S3_BUCKET'"; then
+        log_error "Cannot access S3 bucket: $S3_BUCKET"
+        log_error "Please ensure the bucket exists and you have access to it"
+        log_warn "Falling back to repository installation"
         USE_S3_DRIVERS=false
+        log_section_end "Driver Download to S3" "BUCKET_INACCESSIBLE"
     else
         # Create temp directory for download
         TEMP_DIR="/tmp/nvidia-drivers-$$"
