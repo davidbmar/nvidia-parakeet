@@ -30,8 +30,8 @@ fi
 source "$ENV_FILE"
 
 # Set default values
-NVIDIA_DRIVER_VERSION="${NVIDIA_DRIVER_TARGET_VERSION:-550}"
-S3_BUCKET="${NVIDIA_DRIVERS_S3_BUCKET:-dbm-cf-2-2b}"
+NVIDIA_DRIVER_VERSION="${NVIDIA_DRIVER_TARGET_VERSION:-550.90.12}"
+S3_BUCKET="${NVIDIA_DRIVERS_S3_BUCKET:-dbm-cf-2-web}"
 S3_PREFIX="${NVIDIA_DRIVERS_S3_PREFIX:-bintarball/nvidia-parakeet}"
 DRIVER_BASE_URL="https://us.download.nvidia.com/tesla"
 
@@ -60,6 +60,8 @@ echo ""
 
 # Define driver files to download
 declare -A DRIVER_FILES
+# Extract major version (e.g., 550 from 550.90.12)
+MAJOR_VERSION=$(echo "$NVIDIA_DRIVER_VERSION" | cut -d. -f1)
 DRIVER_FILES["NVIDIA-Linux-x86_64-$NVIDIA_DRIVER_VERSION.run"]="$DRIVER_BASE_URL/$NVIDIA_DRIVER_VERSION/NVIDIA-Linux-x86_64-$NVIDIA_DRIVER_VERSION.run"
 
 # Check if files exist on NVIDIA's servers
@@ -191,8 +193,8 @@ rm -f "$DRIVER_FILE"
 EOF
 
 # Replace S3 bucket and prefix placeholders
-sed -i "s/@@S3_BUCKET@@/$S3_BUCKET/g" install-nvidia-driver.sh
-sed -i "s/@@S3_PREFIX@@/$S3_PREFIX/g" install-nvidia-driver.sh
+sed -i "s|@@S3_BUCKET@@|$S3_BUCKET|g" install-nvidia-driver.sh
+sed -i "s|@@S3_PREFIX@@|$S3_PREFIX|g" install-nvidia-driver.sh
 
 # Upload deployment script to S3
 aws s3 cp install-nvidia-driver.sh "s3://$S3_BUCKET/$S3_PREFIX/scripts/install-nvidia-driver.sh"
