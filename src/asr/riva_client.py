@@ -67,18 +67,31 @@ class RivaASRClient:
     Maintains compatibility with existing WebSocket JSON contract
     """
     
-    def __init__(self, config: Optional[RivaConfig] = None):
+    def __init__(self, config: Optional[RivaConfig] = None, mock_mode: bool = False):
         """
         Initialize Riva ASR client
         
         Args:
             config: Riva configuration (uses env vars if not provided)
+            mock_mode: If True, provide mock responses instead of connecting to real Riva
         """
         self.config = config or RivaConfig()
         self.auth = None
         self.asr_service = None
         self.connected = False
         self.segment_id = 0
+        self.mock_mode = mock_mode
+        
+        # Mock transcription phrases
+        self.mock_phrases = [
+            "Hello this is a mock transcription",
+            "Testing real time speech recognition",
+            "The quick brown fox jumps over the lazy dog", 
+            "Mock ASR service is working correctly",
+            "Real time audio streaming pipeline is functional",
+            "End to end testing successful"
+        ]
+        self.current_phrase_index = 0
         
         # Metrics
         self.total_audio_duration = 0.0
@@ -94,6 +107,11 @@ class RivaASRClient:
         Returns:
             True if connected successfully
         """
+        if self.mock_mode:
+            self.connected = True
+            logger.info("Mock mode enabled - simulating Riva connection")
+            return True
+            
         try:
             # Create authentication
             uri = f"{self.config.host}:{self.config.port}"
@@ -173,6 +191,12 @@ class RivaASRClient:
             if not await self.connect():
                 yield self._create_error_event("Not connected to Riva server")
                 return
+        
+        # Handle mock mode
+        if self.mock_mode:
+            async for event in self._mock_stream_transcribe(audio_iterator, enable_partials):
+                yield event
+            return
         
         try:
             # Create streaming config
@@ -489,6 +513,84 @@ class RivaASRClient:
         self.asr_service = None
         logger.info("RivaASRClient connection closed")
     
+    async def _mock_stream_transcribe(
+        self, 
+        audio_iterator: AsyncGenerator[bytes, None],
+        enable_partials: bool = True
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Mock streaming transcription that simulates real Riva responses
+        """
+        logger.info("Starting mock streaming transcription")
+        
+        # Get current phrase
+        phrase = self.mock_phrases[self.current_phrase_index]
+        self.current_phrase_index = (self.current_phrase_index + 1) % len(self.mock_phrases)
+        
+        words = phrase.split()
+        current_partial = ""
+        
+        start_time = time.time()
+        word_count = 0
+        
+        # Process audio chunks and generate realistic partial/final responses
+        async for audio_chunk in audio_iterator:
+            # Simulate processing delay
+            await asyncio.sleep(0.1)
+            
+            # Add a word to partial every few audio chunks
+            if word_count < len(words) and len(audio_chunk) > 0:
+                current_partial += words[word_count] + " "
+                word_count += 1
+                
+                if enable_partials:
+                    # Emit partial result
+                    yield {
+                        'type': TranscriptionEventType.PARTIAL.value,
+                        'transcript': current_partial.strip(),
+                        'confidence': 0.85,
+                        'is_final': False,
+                        'timestamp': time.time(),
+                        'segment_id': self.segment_id,
+                        'words': [
+                            {
+                                'word': word,
+                                'start': start_time + i * 0.3,
+                                'end': start_time + (i + 1) * 0.3,
+                                'confidence': 0.9
+                            }
+                            for i, word in enumerate(current_partial.strip().split())
+                        ],
+                        'service': 'mock-riva-streaming'
+                    }
+                
+                # Complete phrase after all words
+                if word_count >= len(words):
+                    break
+        
+        # Emit final result
+        yield {
+            'type': TranscriptionEventType.FINAL.value,
+            'transcript': phrase,
+            'confidence': 0.95,
+            'is_final': True,
+            'timestamp': time.time(),
+            'segment_id': self.segment_id,
+            'words': [
+                {
+                    'word': word,
+                    'start': start_time + i * 0.3,
+                    'end': start_time + (i + 1) * 0.3,
+                    'confidence': 0.95
+                }
+                for i, word in enumerate(words)
+            ],
+            'service': 'mock-riva-streaming'
+        }
+        
+        self.segment_id += 1
+        logger.info(f"Mock transcription completed: '{phrase}'")
+
     def get_metrics(self) -> Dict[str, Any]:
         """
         Get client metrics

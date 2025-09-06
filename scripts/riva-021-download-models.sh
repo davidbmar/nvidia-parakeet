@@ -78,18 +78,24 @@ run_remote "
         sudo chown -R ubuntu:ubuntu ngc-cli
     fi
     
-    # Configure NGC with our API key
+    # Configure NGC with our API key (non-interactive)
     echo 'Configuring NGC...'
-    /opt/ngc config set <<EOF
-${NGC_API_KEY}
-0773167241365749
-nvidia
-ascii
-
-
-
-
-EOF
+    
+    # Remove any corrupt config first
+    rm -f ~/.ngc/config 2>/dev/null || true
+    mkdir -p ~/.ngc
+    
+    # Create config file directly
+    cat > ~/.ngc/config << 'NGCEOF'
+apikey = ${NGC_API_KEY}
+format_type = ascii  
+org = nvidia
+team = riva
+ace = nvidia
+NGCEOF
+    
+    # Replace the API key placeholder
+    sed -i "s/\${NGC_API_KEY}/${NGC_API_KEY}/" ~/.ngc/config
 "
 
 echo "✅ NGC CLI configured"

@@ -24,7 +24,7 @@ PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # FastAPI imports
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, File, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
@@ -144,6 +144,37 @@ async def websocket_status():
         "status": "active" if websocket_handler else "inactive",
         "active_connections": len(websocket_handler.active_connections) if websocket_handler else 0
     }
+
+@app.post("/transcribe/file")
+async def transcribe_file(file: UploadFile = File(...)):
+    """File upload endpoint for audio transcription"""
+    try:
+        # Read the uploaded file
+        file_content = await file.read()
+        
+        # For now, return a mock response since we have a mock Riva service
+        # In a real implementation, this would process the audio file
+        response = {
+            "status": "success",
+            "filename": file.filename,
+            "transcript": "This is a mock transcription result from the uploaded audio file. The actual Riva service would process the audio and return real transcription results.",
+            "confidence": 0.95,
+            "duration": "estimated 10 seconds",
+            "service": "mock-riva-file-upload",
+            "timestamp": time.time()
+        }
+        
+        logger.info(f"📁 File upload transcription: {file.filename} ({len(file_content)} bytes)")
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ File transcription error: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "service": "riva-file-upload"
+        }
 
 @app.websocket("/ws/transcribe")
 async def websocket_transcribe(websocket: WebSocket):

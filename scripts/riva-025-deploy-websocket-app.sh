@@ -71,6 +71,7 @@ echo "   Copying source files..."
 cp -r src/ "$DEPLOY_DIR/"
 cp -r websocket/ "$DEPLOY_DIR/"
 cp -r config/ "$DEPLOY_DIR/"
+cp -r static/ "$DEPLOY_DIR/"
 cp rnnt-https-server.py "$DEPLOY_DIR/"
 cp .env "$DEPLOY_DIR/"
 
@@ -145,7 +146,31 @@ run_remote "
 echo "✅ SSL certificates generated"
 
 echo ""
-echo "🔧 Step 5: Checking Riva server status..."
+echo "📁 Step 5: Setting up static web files..."
+
+# Set up static files in the location where the server expects them
+run_remote "
+    # Create static file directories
+    sudo mkdir -p /opt/rnnt/static
+    sudo mkdir -p /opt/riva-app/static
+    
+    # Copy static files to where the FastAPI server expects them
+    if [[ -d /opt/riva-app/static ]]; then
+        sudo cp -r /opt/riva-app/static/* /opt/rnnt/static/
+        sudo chown -R ubuntu:ubuntu /opt/rnnt/
+        echo 'Static files deployed to /opt/rnnt/static/'
+    else
+        echo 'Warning: /opt/riva-app/static/ not found - web interface may not work'
+    fi
+    
+    # List deployed files
+    ls -la /opt/rnnt/static/ | head -10
+"
+
+echo "✅ Static web files deployed"
+
+echo ""
+echo "🔧 Step 6: Checking Riva server status..."
 
 # Check if Riva is running and accessible
 RIVA_STATUS=$(run_remote "sudo docker ps --filter name=riva-server --format '{{.Status}}'" || echo "not_running")
@@ -160,7 +185,7 @@ else
 fi
 
 echo ""
-echo "🚀 Step 6: Starting WebSocket application..."
+echo "🚀 Step 7: Starting WebSocket application..."
 
 # Kill any existing processes
 run_remote "sudo pkill -f 'rnnt-https-server.py' || true"
