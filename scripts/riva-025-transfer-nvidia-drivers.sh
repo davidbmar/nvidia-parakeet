@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# NVIDIA Parakeet Riva ASR Deployment - Step 18: Update NVIDIA Drivers
-# This script ensures NVIDIA drivers are compatible with Riva container requirements
+# NVIDIA Parakeet Riva ASR Deployment - Step 25: Transfer NVIDIA Drivers to GPU
+# This script transfers NVIDIA drivers to the GPU instance for installation
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -16,7 +16,7 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🔧 NVIDIA Parakeet Riva ASR Deployment - Step 18: Update NVIDIA Drivers${NC}"
+echo -e "${BLUE}📤 NVIDIA Parakeet Riva ASR Deployment - Step 25: Transfer NVIDIA Drivers${NC}"
 echo "================================================================"
 
 # Check if configuration exists
@@ -321,6 +321,29 @@ if [ "$USE_S3_DRIVERS" = "true" ]; then
         sudo systemctl stop lightdm 2>/dev/null || true
         sudo systemctl stop gdm 2>/dev/null || true
         sudo systemctl stop xdm 2>/dev/null || true
+        
+        # Stop NVIDIA services
+        echo 'Stopping NVIDIA services...'
+        sudo systemctl stop nvidia-persistenced 2>/dev/null || true
+        sudo systemctl stop nvidia-fabricmanager 2>/dev/null || true
+        
+        # Unload NVIDIA kernel modules
+        echo 'Unloading NVIDIA kernel modules...'
+        sudo rmmod nvidia_uvm 2>/dev/null || true
+        sudo rmmod nvidia_drm 2>/dev/null || true
+        sudo rmmod nvidia_modeset 2>/dev/null || true
+        sudo rmmod nvidia 2>/dev/null || true
+        
+        # Check if modules are still loaded
+        if lsmod | grep -q nvidia; then
+            echo 'WARNING: NVIDIA modules still loaded. Trying to kill GPU processes...'
+            sudo fuser -k /dev/nvidia* 2>/dev/null || true
+            sleep 2
+            sudo rmmod nvidia_uvm 2>/dev/null || true
+            sudo rmmod nvidia_drm 2>/dev/null || true
+            sudo rmmod nvidia_modeset 2>/dev/null || true
+            sudo rmmod nvidia 2>/dev/null || true
+        fi
         
         # Remove old drivers
         echo 'Removing old NVIDIA drivers...'
