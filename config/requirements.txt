@@ -9,6 +9,7 @@ protobuf>=3.20.0
 
 # Core dependencies (reduced - no local model needed)
 torch>=2.0.0  # Still needed for audio tensor operations
+torchaudio>=2.0.0  # For audio processing
 numpy>=1.21.0
 
 # Web server

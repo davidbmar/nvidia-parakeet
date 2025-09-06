@@ -89,14 +89,6 @@ async def startup_event():
         alt_log_dir = os.path.expanduser('~/rnnt/logs')
         os.makedirs(alt_log_dir, exist_ok=True)
         logger.info(f"Using alternative log directory: {alt_log_dir}")
-        logger.info(f"🖥️  Using device: {device}")
-        
-        # Load model
-        asr_model = EncoderDecoderASR.from_hparams(
-            source=RNNT_MODEL_SOURCE,
-            savedir=RNNT_MODEL_CACHE_DIR,
-            run_opts={"device": device}
-        )
     
     # Initialize WebSocket handler (Riva client will be initialized on first connection)
     try:
@@ -246,11 +238,11 @@ if __name__ == "__main__":
     
     # Start HTTPS server
     try:
-        logger.info("🚀 Starting HTTPS server on port 443...")
+        logger.info("🚀 Starting HTTPS server on port 8443...")
         uvicorn.run(
             "rnnt-https-server:app",
             host="0.0.0.0",
-            port=443,
+            port=8443,
             ssl_keyfile=ssl_key_path,
             ssl_certfile=ssl_cert_path,
             ssl_version=ssl.PROTOCOL_TLS_SERVER,
