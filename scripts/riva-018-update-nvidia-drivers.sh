@@ -52,6 +52,9 @@ echo "  • Required Driver Version: ${NVIDIA_DRIVER_REQUIRED_VERSION:-545.23}"
 echo "  • Target Driver Version: ${NVIDIA_DRIVER_TARGET_VERSION:-550}"
 echo ""
 
+# Set SSH key path
+SSH_KEY_PATH="$HOME/.ssh/${SSH_KEY_NAME}.pem"
+
 # Add default values to .env if not present
 if [ -z "$NVIDIA_DRIVER_REQUIRED_VERSION" ]; then
     echo "NVIDIA_DRIVER_REQUIRED_VERSION=545.23" >> "$ENV_FILE"
@@ -291,23 +294,59 @@ fi
 if [ "$USE_S3_DRIVERS" = "true" ]; then
     echo -e "${BLUE}📥 Installing drivers from S3...${NC}"
     
+    # First download the driver locally, then copy to server
+    echo "Downloading driver from S3 to local machine..."
+    TEMP_DIR="/tmp/nvidia-driver-transfer-$$"
+    mkdir -p "$TEMP_DIR"
+    
+    # Download driver and script from S3 locally
+    aws s3 cp "s3://$S3_BUCKET/$S3_PREFIX/drivers/v$NVIDIA_DRIVER_TARGET_VERSION/$DRIVER_FILENAME" "$TEMP_DIR/"
+    aws s3 cp "s3://$S3_BUCKET/$S3_PREFIX/scripts/install-nvidia-driver.sh" "$TEMP_DIR/" 2>/dev/null || true
+    
+    # Copy driver to GPU instance
+    echo "Transferring driver to GPU instance..."
+    scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no \
+        "$TEMP_DIR/$DRIVER_FILENAME" \
+        "ubuntu@$GPU_INSTANCE_IP:/tmp/"
+    
+    # Install the driver on the server
     run_on_server "
         set -e
-        echo 'Installing NVIDIA driver from S3...'
+        echo 'Installing NVIDIA driver from transferred file...'
         
-        # Download and run installation script
-        echo 'Downloading installation script from S3...'
-        aws s3 cp 's3://$S3_BUCKET/$S3_PREFIX/scripts/install-nvidia-driver.sh' . 
-        chmod +x install-nvidia-driver.sh
+        cd /tmp
+        chmod +x $DRIVER_FILENAME
         
-        # Run installation
-        ./install-nvidia-driver.sh $NVIDIA_DRIVER_TARGET_VERSION
+        # Stop display services
+        sudo systemctl stop lightdm 2>/dev/null || true
+        sudo systemctl stop gdm 2>/dev/null || true
+        sudo systemctl stop xdm 2>/dev/null || true
+        
+        # Remove old drivers
+        echo 'Removing old NVIDIA drivers...'
+        sudo apt-get remove --purge -y 'nvidia-*' 'libnvidia-*' '*nvidia*' 2>/dev/null || true
+        sudo apt-get autoremove -y
+        
+        # Install new driver
+        echo 'Installing new NVIDIA driver...'
+        sudo ./$DRIVER_FILENAME \
+            --silent \
+            --no-questions \
+            --accept-license \
+            --disable-nouveau \
+            --no-cc-version-check \
+            --install-libglvnd \
+            --no-nvidia-modprobe \
+            --no-kernel-module-source
         
         # Clean up
-        rm -f install-nvidia-driver.sh
+        rm -f /tmp/$DRIVER_FILENAME
         
-        echo 'S3-based driver installation completed - reboot required'
-    " "Installing NVIDIA drivers from S3"
+        echo 'Driver installation completed - reboot required'
+    " "Installing NVIDIA drivers from transferred file"
+    
+    # Clean up local temp directory
+    rm -rf "$TEMP_DIR"
 else
     echo -e "${BLUE}📦 Installing drivers from repository...${NC}"
     
