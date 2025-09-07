@@ -272,6 +272,25 @@ update_env_status() {
     echo "📝 Updated .env: ${key}=${value}"
 }
 
+# Update or append environment variable
+update_or_append_env() {
+    local key=$1
+    local value=$2
+    
+    if [[ ! -f .env ]]; then
+        echo "❌ .env file not found"
+        return 1
+    fi
+    
+    if grep -q "^${key}=" .env; then
+        sed -i "s/^${key}=.*/${key}=${value}/" .env
+    else
+        echo "${key}=${value}" >> .env
+    fi
+    
+    echo "📝 Updated .env: ${key}=${value}"
+}
+
 # Check if prerequisite step passed
 check_prerequisite_status() {
     local status_key=$1

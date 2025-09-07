@@ -62,7 +62,14 @@ run_remote "
     
     # Stop existing NIM container if running
     docker stop ${CONTAINER_NAME} 2>/dev/null || echo 'No existing NIM container'
-    docker rm ${CONTAINER_NAME} 2>/dev/null || true
+    docker rm -f ${CONTAINER_NAME} 2>/dev/null || true
+    
+    # Double-check container is gone
+    sleep 2
+    if docker ps -a | grep -q ${CONTAINER_NAME}; then
+        echo 'Force removing stubborn container...'
+        docker rm -f ${CONTAINER_NAME}
+    fi
     
     echo '✅ Services stopped and cleaned up'
 "
@@ -77,7 +84,11 @@ run_remote "
     sudo mkdir -p /opt/nim-cache
     sudo chown ubuntu:ubuntu /opt/nim-cache
     
-    # Start NIM container with proper configuration
+    # Get NGC API key from copied config
+    NGC_API_KEY=\$(grep 'apikey' ~/.ngc/config | cut -d' ' -f3)
+    echo \"Using NGC API Key: \${NGC_API_KEY:0:20}...\"
+    
+    # Start NIM container with proper NGC authentication
     docker run -d \
         --name ${CONTAINER_NAME} \
         --restart unless-stopped \
@@ -87,10 +98,14 @@ run_remote "
         -p 50051:50051 \
         -p 8080:8080 \
         -v /opt/nim-cache:/opt/nim/.cache \
+        -v ~/.ngc:/home/nvs/.ngc \
         -e CUDA_VISIBLE_DEVICES=0 \
         -e NIM_HTTP_API_PORT=8000 \
         -e NIM_GRPC_API_PORT=50051 \
         -e NIM_LOG_LEVEL=INFO \
+        -e NGC_API_KEY=\$NGC_API_KEY \
+        -e NGC_CLI_API_KEY=\$NGC_API_KEY \
+        -e NGC_HOME=/home/nvs/.ngc \
         ${CONTAINER_IMAGE}
     
     echo '✅ NIM container started'
