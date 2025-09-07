@@ -192,27 +192,29 @@ run_remote "sudo pkill -f 'rnnt-https-server.py' || true"
 run_remote "sudo fuser -k 8443/tcp || true"
 
 # Start the application in background
-run_remote "
+# Start the WebSocket server using a separate SSH session to avoid termination
+ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no ubuntu@$GPU_INSTANCE_IP "
     cd /opt/riva-app
     source venv/bin/activate
-    
-    # Start server in background
     nohup python3 rnnt-https-server.py > /tmp/websocket-server.log 2>&1 &
-    
-    # Wait for startup
-    sleep 8
-    
-    # Check if process is running
-    if pgrep -f 'rnnt-https-server.py' > /dev/null; then
-        echo 'WebSocket server started successfully'
-        echo 'Process ID:' \$(pgrep -f 'rnnt-https-server.py')
-    else
-        echo 'Failed to start WebSocket server'
-        echo 'Server log:'
-        tail -20 /tmp/websocket-server.log
-        exit 1
-    fi
-"
+    echo \$!
+" > /tmp/websocket-pid.txt
+
+WEBSOCKET_PID=$(cat /tmp/websocket-pid.txt)
+echo "   WebSocket server started with PID: $WEBSOCKET_PID"
+
+# Wait for startup
+sleep 8
+
+# Check if process is running
+if ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no ubuntu@$GPU_INSTANCE_IP "pgrep -f 'rnnt-https-server.py'" > /dev/null; then
+    echo "   ✅ WebSocket server is running"
+else
+    echo "   ❌ Failed to start WebSocket server"
+    echo "   Server log:"
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no ubuntu@$GPU_INSTANCE_IP "tail -20 /tmp/websocket-server.log"
+    exit 1
+fi
 
 echo "✅ WebSocket application started"
 
@@ -284,5 +286,20 @@ fi
 
 echo ""
 echo "📝 Updated .env with deployment status"
+echo ""
+
+# Find the next script in sequence
+CURRENT_SCRIPT_NUM="045"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NEXT_SCRIPT=$(ls "$SCRIPT_DIR"/riva-*.sh 2>/dev/null | grep -E "riva-[0-9]{3}-" | sort | grep -A1 "riva-${CURRENT_SCRIPT_NUM}-" | tail -1)
+
+echo "Next steps:"
+if [ -n "$NEXT_SCRIPT" ] && [ "$NEXT_SCRIPT" != "$SCRIPT_DIR/riva-${CURRENT_SCRIPT_NUM}-deploy-websocket-app.sh" ]; then
+    NEXT_SCRIPT_RELATIVE="./scripts/$(basename "$NEXT_SCRIPT")"
+    echo "  1. Run next script: $NEXT_SCRIPT_RELATIVE"
+else
+    echo "  1. Test with: ./scripts/riva-debug.sh"
+fi
+echo "  2. Or access web UI: https://${GPU_INSTANCE_IP}:8443/"
 echo ""
 echo "Next: Run ./scripts/riva-030-test-integration.sh to test the full system"
