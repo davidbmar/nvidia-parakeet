@@ -55,13 +55,13 @@ run_step() {
         local env_file="$PROJECT_ROOT/.env"
         if [ -f "$env_file" ]; then
             case "$step_script" in
-                *riva-015-deploy-riva.sh|*riva-020-setup-riva-server.sh)
+                *riva-070-setup-traditional-riva-server.sh|*riva-020-setup-riva-server.sh)
                     sed -i 's/RIVA_DEPLOYMENT_STATUS=.*/RIVA_DEPLOYMENT_STATUS=completed/' "$env_file"
                     ;;
-                *riva-030-deploy-websocket-app.sh)
+                *riva-090-deploy-websocket-asr-application.sh)
                     sed -i 's/APP_DEPLOYMENT_STATUS=.*/APP_DEPLOYMENT_STATUS=completed/' "$env_file"
                     ;;
-                *riva-040-test-system.sh)
+                *riva-100-test-basic-integration.sh)
                     sed -i 's/TESTING_STATUS=.*/TESTING_STATUS=completed/' "$env_file"
                     ;;
             esac
@@ -184,17 +184,17 @@ main_deployment() {
     case $DEPLOYMENT_STRATEGY in
         1)
             # AWS EC2 Deployment
-            run_step "$SCRIPT_DIR/riva-010-restart-existing-or-deploy-new-gpu-instance.sh" "GPU Instance Deployment"
-            run_step "$SCRIPT_DIR/riva-015-deploy-riva.sh" "Riva Server Setup"
-            run_step "$SCRIPT_DIR/riva-030-deploy-websocket-app.sh" "WebSocket App Deployment"
-            run_step "$SCRIPT_DIR/riva-040-test-system.sh" "System Testing"
+            run_step "$SCRIPT_DIR/riva-015-deploy-or-restart-aws-gpu-instance.sh" "GPU Instance Deployment"
+            run_step "$SCRIPT_DIR/riva-070-setup-traditional-riva-server.sh" "Riva Server Setup"
+            run_step "$SCRIPT_DIR/riva-090-deploy-websocket-asr-application.sh" "WebSocket App Deployment"
+            run_step "$SCRIPT_DIR/riva-100-test-basic-integration.sh" "System Testing"
             run_step "$SCRIPT_DIR/riva-050-performance-validation.sh" "Performance Validation" true
             ;;
         2|3)
             # Existing Server or Local Deployment
             run_step "$SCRIPT_DIR/riva-020-setup-riva-server.sh" "Riva Server Setup"
-            run_step "$SCRIPT_DIR/riva-030-deploy-websocket-app.sh" "WebSocket App Deployment"
-            run_step "$SCRIPT_DIR/riva-040-test-system.sh" "System Testing"
+            run_step "$SCRIPT_DIR/riva-090-deploy-websocket-asr-application.sh" "WebSocket App Deployment"
+            run_step "$SCRIPT_DIR/riva-100-test-basic-integration.sh" "System Testing"
             run_step "$SCRIPT_DIR/riva-050-performance-validation.sh" "Performance Validation" true
             ;;
     esac

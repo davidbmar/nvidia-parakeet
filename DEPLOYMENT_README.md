@@ -18,7 +18,7 @@ This repository provides a complete, repeatable infrastructure deployment system
 ./scripts/riva-000-setup-configuration.sh
 
 # Step 2: Deploy AWS GPU instance (Strategy 1 only)
-./scripts/riva-010-restart-existing-or-deploy-new-gpu-instance.sh
+./scripts/riva-015-deploy-or-restart-aws-gpu-instance.sh
 
 # Step 3: Configure security and access
 ./scripts/riva-015-configure-security-access.sh
@@ -27,13 +27,13 @@ This repository provides a complete, repeatable infrastructure deployment system
 ./scripts/riva-025-transfer-nvidia-drivers.sh
 
 # Step 5: Setup Riva server with Parakeet model
-./scripts/riva-040-setup-riva-server.sh
+./scripts/riva-070-setup-traditional-riva-server.sh
 
 # Step 6: Deploy WebSocket application
-./scripts/riva-045-deploy-websocket-app.sh
+./scripts/riva-090-deploy-websocket-asr-application.sh
 
 # Step 7: Test complete integration
-./scripts/riva-055-test-integration.sh
+./scripts/riva-100-test-basic-integration.sh
 
 # Debug utilities available:
 ./scripts/check-driver-status.sh    # Quick system status

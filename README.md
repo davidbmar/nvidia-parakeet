@@ -53,7 +53,7 @@ cd nvidia-parakeet
 ./scripts/riva-000-setup-configuration.sh
 
 # 3. Deploy GPU instance (AWS strategy)
-./scripts/riva-010-restart-existing-or-deploy-new-gpu-instance.sh
+./scripts/riva-015-deploy-or-restart-aws-gpu-instance.sh
 
 # 4. Configure security access
 ./scripts/riva-015-configure-security-access.sh
@@ -62,13 +62,13 @@ cd nvidia-parakeet
 ./scripts/riva-025-transfer-nvidia-drivers.sh
 
 # 6. Setup Riva server with Parakeet model
-./scripts/riva-040-setup-riva-server.sh
+./scripts/riva-070-setup-traditional-riva-server.sh
 
 # 7. Deploy WebSocket application
-./scripts/riva-045-deploy-websocket-app.sh
+./scripts/riva-090-deploy-websocket-asr-application.sh
 
 # 8. Test complete integration
-./scripts/riva-055-test-integration.sh
+./scripts/riva-100-test-basic-integration.sh
 
 # System is ready! 🎉
 # Check logs in: ./logs/ for detailed execution info
@@ -187,11 +187,11 @@ nvidia-parakeet/
 ├── scripts/           # Deployment and management scripts
 │   ├── common-logging.sh                    # Unified logging framework
 │   ├── riva-000-setup-configuration.sh     # Interactive configuration
-│   ├── riva-010-restart-existing-or-deploy-new-gpu-instance.sh     # AWS EC2 GPU deployment
+│   ├── riva-015-deploy-or-restart-aws-gpu-instance.sh     # AWS EC2 GPU deployment
 │   ├── riva-025-transfer-nvidia-drivers.sh # NVIDIA driver management
-│   ├── riva-040-setup-riva-server.sh       # Riva server with Parakeet
-│   ├── riva-045-deploy-websocket-app.sh    # WebSocket application
-│   ├── riva-055-test-integration.sh        # End-to-end testing
+│   ├── riva-070-setup-traditional-riva-server.sh       # Riva server with Parakeet
+│   ├── riva-090-deploy-websocket-asr-application.sh    # WebSocket application
+│   ├── riva-100-test-basic-integration.sh        # End-to-end testing
 │   ├── check-driver-status.sh              # Driver status utility
 │   └── test-logging.sh                     # Logging framework test
 ├── logs/              # Structured log files (auto-generated)

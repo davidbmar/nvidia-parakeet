@@ -41,7 +41,7 @@ This executes all steps in sequence with detailed logging. Logs are saved in `lo
 
 ### Step 010: Deploy GPU Instance  
 ```bash
-./scripts/riva-010-restart-existing-or-deploy-new-gpu-instance.sh
+./scripts/riva-015-deploy-or-restart-aws-gpu-instance.sh
 ```
 - Launches AWS GPU instance (g4dn.xlarge recommended)
 - Configures security groups and networking  
@@ -68,7 +68,7 @@ This executes all steps in sequence with detailed logging. Logs are saved in `lo
 
 ### Step 040: Setup Riva Server (Recommended)
 ```bash
-./scripts/riva-040-setup-riva-server.sh
+./scripts/riva-070-setup-traditional-riva-server.sh
 ```
 - Installs Docker and NVIDIA Container Toolkit
 - Deploys NVIDIA Riva with Parakeet RNNT model
@@ -78,7 +78,7 @@ This executes all steps in sequence with detailed logging. Logs are saved in `lo
 
 ### Step 045: Deploy WebSocket Application
 ```bash
-./scripts/riva-045-deploy-websocket-app.sh
+./scripts/riva-090-deploy-websocket-asr-application.sh
 ```
 - Deploys WebSocket server for real-time streaming
 - Configures Riva client integration
@@ -87,7 +87,7 @@ This executes all steps in sequence with detailed logging. Logs are saved in `lo
 
 ### Step 055: Test Complete Integration
 ```bash
-./scripts/riva-055-test-integration.sh
+./scripts/riva-100-test-basic-integration.sh
 ```
 - Tests end-to-end WebSocket to Riva integration
 - Validates partial and final result streaming
@@ -237,7 +237,7 @@ ls -lat logs/ | head -10
 tail -f logs/riva-040-setup-riva-server_*.log
 
 # Check system health across all components
-./scripts/riva-055-test-integration.sh
+./scripts/riva-100-test-basic-integration.sh
 ```
 
 ## 🧪 Testing Your Deployment
