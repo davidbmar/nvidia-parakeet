@@ -32,7 +32,7 @@ get_latest_logs() {
     ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "docker logs --tail 5 $CONTAINER_NAME 2>/dev/null | tail -1" || echo "No logs available"
 }
 
-# Function to check download status
+# Function to check download status with progress indicators
 check_downloads() {
     local completed_count=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "docker logs $CONTAINER_NAME 2>/dev/null | grep 'status.*COMPLETED' | wc -l")
     local downloading=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "docker logs $CONTAINER_NAME 2>/dev/null | tail -10 | grep 'Downloading model' | tail -1")
@@ -41,6 +41,42 @@ check_downloads() {
     if [[ -n "$downloading" ]]; then
         local model_name=$(echo "$downloading" | grep -o "parakeet-ctc-riva-1-1b[^']*" | tail -1)
         echo "Currently downloading: $model_name"
+    fi
+}
+
+# Function to show cache and disk usage (progress indicators)
+show_progress_indicators() {
+    echo "💾 Progress Indicators:"
+    
+    # Check NIM cache size
+    local nim_cache_size=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "sudo du -sh /opt/nim-cache 2>/dev/null | cut -f1" 2>/dev/null || echo "0")
+    echo "   NIM cache size: $nim_cache_size"
+    
+    # Check active extraction processes
+    local extracting_count=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "docker logs $CONTAINER_NAME 2>/dev/null | tail -20 | grep -c 'Extracting model'" 2>/dev/null || echo "0")
+    if [[ "$extracting_count" -gt 0 ]]; then
+        echo "   Active extractions: $extracting_count"
+    fi
+    
+    # Check model extraction progress
+    local extracted_models=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "find /opt/nim-cache -maxdepth 3 -type d -name 'asr_parakeet*' 2>/dev/null | wc -l" 2>/dev/null || echo "0")
+    local total_files=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "find /opt/nim-cache -type f -name '*.onnx' -o -name '*.engine' -o -name '*.plan' 2>/dev/null | wc -l" 2>/dev/null || echo "0")
+    
+    if [[ "$extracted_models" -gt 0 ]]; then
+        echo "   Model directories: $extracted_models/3 created"
+        echo "   Model files extracted: $total_files"
+    fi
+    
+    # Show GPU memory usage if nvidia-smi available
+    local gpu_mem=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null | awk '{printf \"%s/%s MB (%.1f%%)\", \$1, \$2, \$1*100/\$2}'" 2>/dev/null || echo "")
+    if [[ -n "$gpu_mem" ]]; then
+        echo "   GPU memory: $gpu_mem"
+    fi
+    
+    # Container resource usage
+    local container_stats=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "docker stats $CONTAINER_NAME --no-stream --format 'table {{.CPUPerc}}\t{{.MemUsage}}' 2>/dev/null | tail -1" 2>/dev/null || echo "")
+    if [[ -n "$container_stats" ]]; then
+        echo "   Container usage: $container_stats"
     fi
 }
 
@@ -92,6 +128,9 @@ while true; do
     # Check downloads
     echo "🔄 Download Status:"
     check_downloads | sed 's/^/   /'
+    
+    # Show progress indicators
+    show_progress_indicators | sed 's/^/   /'
     
     # Check latest activity
     LATEST_LOG=$(get_latest_logs)

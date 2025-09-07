@@ -31,7 +31,42 @@ print_script_header "060" "Deploy NVIDIA NIM Container" "Starting Parakeet ASR s
 CONTAINER_IMAGE="nvcr.io/nim/nvidia/parakeet-ctc-riva-1-1b:1.0.0"
 CONTAINER_NAME="parakeet-nim-asr"
 
-print_step_header "1" "Check Container Availability"
+print_step_header "1" "Check Disk Space and Container Availability"
+
+echo "   💾 Checking available disk space..."
+run_remote "
+    AVAILABLE_GB=\$(df --output=avail / | tail -1 | awk '{print int(\$1/1024/1024)}')
+    REQUIRED_GB=30
+    
+    echo \"Available space: \${AVAILABLE_GB}GB\"
+    echo \"Required space: \${REQUIRED_GB}GB (for NIM model extraction)\"
+    
+    if [ \$AVAILABLE_GB -lt \$REQUIRED_GB ]; then
+        echo \"❌ INSUFFICIENT DISK SPACE\"
+        echo \"   Available: \${AVAILABLE_GB}GB\"
+        echo \"   Required:  \${REQUIRED_GB}GB\"
+        echo \"\"
+        echo \"💡 To free up space, run these commands on the GPU worker:\"
+        echo \"\"
+        echo \"🧹 Option 1: Quick Docker cleanup (safe, ~5-15GB):\"
+        echo \"   ssh -i ~/.ssh/\${SSH_KEY_NAME}.pem ubuntu@\${GPU_INSTANCE_IP} 'docker system prune -f'\"
+        echo \"\"
+        echo \"🧹 Option 2: Remove old Riva models (~10-20GB):\"
+        echo \"   ssh -i ~/.ssh/\${SSH_KEY_NAME}.pem ubuntu@\${GPU_INSTANCE_IP} 'sudo rm -rf /opt/riva/models/* /opt/riva/rmir/*'\"
+        echo \"\"
+        echo \"🧹 Option 3: Clean NIM cache (forces re-download, ~20-30GB):\"
+        echo \"   ssh -i ~/.ssh/\${SSH_KEY_NAME}.pem ubuntu@\${GPU_INSTANCE_IP} 'sudo rm -rf /opt/nim-cache/*'\"
+        echo \"\"
+        echo \"📊 Check current usage:\"
+        echo \"   ssh -i ~/.ssh/\${SSH_KEY_NAME}.pem ubuntu@\${GPU_INSTANCE_IP} 'df -h && du -sh /opt/*'\"
+        echo \"\"
+        exit 1
+    else
+        echo \"✅ Sufficient disk space available (\${AVAILABLE_GB}GB)\"
+    fi
+"
+
+print_step_header "2" "Check Container Availability"
 
 echo "   📦 Checking for NIM container..."
 IMAGE_STATUS=$(run_remote "
