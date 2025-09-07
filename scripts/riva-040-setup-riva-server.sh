@@ -391,7 +391,7 @@ docker run -d \\
     --gpus all \\
     -p $RIVA_PORT:50051 \\
     -p $RIVA_HTTP_PORT:8000 \\
-    -v /opt/riva/models:/data/models \\
+    -v /opt/riva/deployed_models:/data/models \\
     -v /opt/riva/logs:/logs \\
     -e \"CUDA_VISIBLE_DEVICES=0\" \\
     nvcr.io/nvidia/riva/riva-speech:$RIVA_VERSION \\
@@ -418,11 +418,14 @@ EOSTOP
 echo -e "${BLUE}📋 Pre-startup validation...${NC}"
 
 run_on_server "
-    echo 'Checking model files...'
-    if find /opt/riva/models -name '*.riva' -o -name '*.plan' | head -3; then
-        echo '✅ Model files found'
+    echo 'Checking deployed models...'
+    if [ -d /opt/riva/deployed_models ] && find /opt/riva/deployed_models -name 'config.pbtxt' | head -3; then
+        echo '✅ Deployed models found'
+        echo \"Total deployed models: \$(find /opt/riva/deployed_models -name 'config.pbtxt' | wc -l)\"
     else
-        echo '⚠️  No .riva/.plan files found - may need model deployment'
+        echo '❌ No deployed models found in /opt/riva/deployed_models'
+        echo 'Please run: ./scripts/riva-043-deploy-models.sh first'
+        exit 1
     fi
     
     echo ''

@@ -10,7 +10,7 @@
 # Objective: Deploy .riva files to Triton-compatible model repository
 # Action: Uses Riva deployment tools to convert encrypted .riva files to Triton models
 #
-# Next script: riva-040-setup-riva-server.sh (restart with deployed models)
+# Next script: riva-044-start-riva-server.sh (start server with deployed models)
 
 set -euo pipefail
 
@@ -47,8 +47,8 @@ print_step_header "2" "Prepare Deployment Environment"
 
 echo "   🏗️  Setting up deployment directories..."
 run_remote "
-    # Create deployment directories
-    sudo mkdir -p /opt/riva/deployed_models
+    # Create deployment directories with proper ASR structure
+    sudo mkdir -p /opt/riva/deployed_models/asr
     sudo mkdir -p /opt/riva/deployment_logs
     sudo chown -R ubuntu:ubuntu /opt/riva/deployed_models /opt/riva/deployment_logs
     
@@ -161,9 +161,9 @@ else
         find /opt/riva/models -name '*.riva' | while read riva_file; do
             echo \"Processing: \$riva_file\"
             
-            # Extract model name
+            # Extract model name and place in asr directory
             model_name=\$(basename \"\$riva_file\" .riva)
-            model_dir=\"/opt/riva/deployed_models/\$model_name\"
+            model_dir=\"/opt/riva/deployed_models/asr/\$model_name\"
             
             # Create Triton model directory structure
             mkdir -p \"\$model_dir/1\"
@@ -171,10 +171,10 @@ else
             # Copy .riva file to model version directory
             cp \"\$riva_file\" \"\$model_dir/1/model.riva\"
             
-            # Create basic config.pbtxt for Triton
+            # Create basic config.pbtxt for Triton using ONNX backend for .riva files
             cat > \"\$model_dir/config.pbtxt\" << EOCONFIG
 name: \"\$model_name\"
-platform: \"riva\"
+backend: \"onnxruntime_onnx\"
 max_batch_size: 1
 input [
   {
@@ -201,6 +201,51 @@ EOCONFIG
             echo \"✅ Created Triton model: \$model_name\"
         done
         
+        # Create top-level ASR service config with correct model reference
+        echo 'Creating ASR service configuration...'
+        ACTUAL_MODEL_NAME=\\$(find /opt/riva/deployed_models/asr -maxdepth 1 -type d -name '*Parakeet*' | head -1 | xargs basename 2>/dev/null || echo 'Parakeet-RNNT-XXL-1.1b_spe1024_en-US_8.1')
+        echo \\\"Using model name: \\$ACTUAL_MODEL_NAME\\\"
+        
+        cat > /opt/riva/deployed_models/asr/config.pbtxt << ASRCONFIG
+name: \\\"asr\\\"
+platform: \\\"ensemble\\\"
+max_batch_size: 1
+
+input [
+  {
+    name: \\\"audio_signal\\\"
+    data_type: TYPE_FP32
+    dims: [-1]
+  }
+]
+
+output [
+  {
+    name: \\\"transcript\\\"
+    data_type: TYPE_STRING
+    dims: [-1]
+  }
+]
+
+ensemble_scheduling {
+  step [
+    {
+      model_name: \\\"\\$ACTUAL_MODEL_NAME\\\"
+      model_version: 1
+      input_map {
+        key: \\\"audio_signal\\\"
+        value: \\\"audio_signal\\\"
+      }
+      output_map {
+        key: \\\"transcript\\\"
+        value: \\\"transcript\\\"
+      }
+    }
+  ]
+}
+ASRCONFIG
+        
+        echo '✅ ASR service configuration created'
         echo ''
         echo 'Deployment summary:'
         find /opt/riva/deployed_models -name 'config.pbtxt' | wc -l | xargs echo 'Models deployed:'
@@ -285,7 +330,7 @@ run_remote "
     echo 'Ready for Riva server startup!'
 "
 
-complete_script_success "043" "RIVA_MODEL_DEPLOYMENT" "./scripts/riva-040-setup-riva-server.sh"
+complete_script_success "043" "RIVA_MODEL_DEPLOYMENT" "./scripts/riva-044-start-riva-server.sh"
 
 echo ""
 echo "🎉 RIVA-043 Complete: Models Deployed Successfully!"
@@ -296,7 +341,7 @@ echo "✅ Deployment validated"
 echo "✅ Riva configuration updated"
 echo ""
 echo "📍 Next Steps:"
-echo "   1. Run: ./scripts/riva-040-setup-riva-server.sh"
+echo "   1. Run: ./scripts/riva-044-start-riva-server.sh"
 echo "      (This will now start Riva with the deployed models)"
 echo "   2. Then: ./scripts/riva-060-test-riva-connectivity.sh"
 echo "      (Test the working Riva connection)"
