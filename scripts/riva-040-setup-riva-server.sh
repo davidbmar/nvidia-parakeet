@@ -127,6 +127,58 @@ copy_to_server() {
     esac
 }
 
+# Check for existing problematic Riva container (post-reboot issue)
+echo -e "${BLUE}🔍 Checking for existing Riva container issues...${NC}"
+
+EXISTING_STATUS=$(run_on_server "sudo docker ps -a --filter name=riva-server --format '{{.Status}}' 2>/dev/null || echo 'NONE'" "")
+
+if [[ "$EXISTING_STATUS" == *"Restarting"* ]]; then
+    echo -e "${YELLOW}⚠️ Detected Riva container in restart loop (likely post-reboot issue)${NC}"
+    
+    RESTART_COUNT=$(run_on_server "sudo docker inspect riva-server 2>/dev/null | grep RestartCount | cut -d':' -f2 | tr -d ', ' || echo '0'" "")
+    echo "Restart attempts: $RESTART_COUNT"
+    
+    echo -e "${BLUE}🔧 Cleaning up problematic container...${NC}"
+    run_on_server "
+        echo 'Stopping restart-looping container...'
+        sudo docker stop riva-server 2>/dev/null || true
+        sleep 3
+        
+        echo 'Removing problematic container...'
+        sudo docker rm riva-server 2>/dev/null || true
+        sleep 2
+        
+        echo '✅ Cleanup completed'
+    " "Cleaning up restart-looping container"
+    
+elif [[ "$EXISTING_STATUS" == *"Up"* ]]; then
+    echo -e "${GREEN}✅ Existing Riva container is running${NC}"
+    echo "Checking if it's healthy..."
+    
+    # Quick health check
+    HEALTH_STATUS=$(run_on_server "curl -s -o /dev/null -w '%{http_code}' http://localhost:${RIVA_HTTP_PORT:-8050}/health 2>/dev/null || echo '000'" "")
+    
+    if [ "$HEALTH_STATUS" = "200" ]; then
+        echo -e "${GREEN}🎉 Riva server is already running and healthy!${NC}"
+        echo -e "${CYAN}No setup needed - server is operational${NC}"
+        echo ""
+        echo "Server Status:"
+        run_on_server "sudo docker ps --filter name=riva-server --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'" ""
+        echo ""
+        echo "Next steps:"
+        echo "  • Test connectivity: ./scripts/riva-060-test-riva-connectivity.sh"
+        echo "  • Or force rebuild: sudo docker stop riva-server && sudo docker rm riva-server, then re-run this script"
+        exit 0
+    else
+        echo -e "${YELLOW}⚠️ Container running but not healthy - will recreate${NC}"
+        run_on_server "sudo docker stop riva-server && sudo docker rm riva-server" "Removing unhealthy container"
+    fi
+    
+elif [[ "$EXISTING_STATUS" != "NONE" ]]; then
+    echo -e "${BLUE}🗑️ Removing existing stopped container${NC}"
+    run_on_server "sudo docker rm riva-server 2>/dev/null || true" ""
+fi
+
 # Check server connectivity
 echo -e "${BLUE}🔍 Testing server connectivity...${NC}"
 
@@ -332,18 +384,18 @@ source /opt/riva/config/config.sh
 # Ensure log directory exists
 mkdir -p /opt/riva/logs
 
-# Start Riva server
+# Start Riva server with correct paths and startup script
 docker run -d \\
     --name riva-server \\
     --restart unless-stopped \\
     --gpus all \\
     -p $RIVA_PORT:50051 \\
     -p $RIVA_HTTP_PORT:8000 \\
-    -v /opt/riva/models:/models \\
+    -v /opt/riva/models:/data/models \\
     -v /opt/riva/logs:/logs \\
     -e \"CUDA_VISIBLE_DEVICES=0\" \\
-    -e \"RIVA_MODEL_REPO=/models\" \\
-    nvcr.io/nvidia/riva/riva-speech:$RIVA_VERSION
+    nvcr.io/nvidia/riva/riva-speech:$RIVA_VERSION \\
+    /opt/riva/bin/start-riva
 
 echo 'Riva server started'
 echo 'Container logs: docker logs -f riva-server'
@@ -362,6 +414,29 @@ EOSTOP
     chmod +x /opt/riva/stop-riva.sh
 " "Creating Riva service scripts"
 
+# Pre-startup validation
+echo -e "${BLUE}📋 Pre-startup validation...${NC}"
+
+run_on_server "
+    echo 'Checking model files...'
+    if find /opt/riva/models -name '*.riva' -o -name '*.plan' | head -3; then
+        echo '✅ Model files found'
+    else
+        echo '⚠️  No .riva/.plan files found - may need model deployment'
+    fi
+    
+    echo ''
+    echo 'Checking GPU memory...'
+    GPU_FREE=\$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits)
+    echo \"GPU free memory: \${GPU_FREE} MB\"
+    
+    if [ \"\$GPU_FREE\" -lt 2000 ]; then
+        echo '⚠️  GPU memory may be low for model loading'
+    else
+        echo '✅ Sufficient GPU memory available'
+    fi
+" "Pre-startup validation"
+
 # Start Riva server
 echo -e "${BLUE}🚀 Starting Riva server...${NC}"
 
@@ -372,16 +447,30 @@ run_on_server "
     # Start new container
     /opt/riva/start-riva.sh
     
-    echo 'Waiting for Riva server to initialize...'
+    echo 'Monitoring startup logs for 60 seconds...'
+    
+    # Monitor logs with timeout to detect startup success/failure
+    timeout 60s docker logs -f riva-server 2>&1 | while read line; do
+        echo \"\$line\"
+        if [[ \"\$line\" == *\"listening\"* ]] || [[ \"\$line\" == *\"server started\"* ]] || [[ \"\$line\" == *\"ready\"* ]]; then
+            echo '🎉 Detected server ready signal!'
+            break
+        elif [[ \"\$line\" == *\"error\"* ]] || [[ \"\$line\" == *\"failed\"* ]]; then
+            echo '❌ Detected error in startup'
+            break
+        fi
+    done &
+    
+    # Wait for container to stabilize
     sleep 30
     
     # Check if container is running
     if docker ps | grep -q riva-server; then
-        echo '✅ Riva server is running'
+        echo '✅ Riva container is running'
     else
         echo '❌ Riva server failed to start'
-        echo 'Container logs:'
-        docker logs riva-server 2>/dev/null || echo 'No logs available'
+        echo 'Recent container logs:'
+        docker logs --tail 20 riva-server 2>/dev/null || echo 'No logs available'
         exit 1
     fi
 " "Starting Riva server"
