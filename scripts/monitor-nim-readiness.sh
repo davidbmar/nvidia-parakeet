@@ -53,16 +53,20 @@ show_progress_indicators() {
     echo "   NIM cache size: $nim_cache_size"
     
     # Check active extraction processes
-    local extracting_count=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "docker logs $CONTAINER_NAME 2>/dev/null | tail -20 | grep -c 'Extracting model'" 2>/dev/null || echo "0")
-    if [[ "$extracting_count" -gt 0 ]]; then
+    local extracting_count=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "docker logs $CONTAINER_NAME 2>/dev/null | tail -20 | grep -c 'Extracting model' | head -1" 2>/dev/null || echo "0")
+    extracting_count=$(echo "$extracting_count" | tr -d '\n\r' | grep -o '[0-9]*' | head -1)
+    if [[ "${extracting_count:-0}" -gt 0 ]]; then
         echo "   Active extractions: $extracting_count"
     fi
     
     # Check model extraction progress
-    local extracted_models=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "find /opt/nim-cache -maxdepth 3 -type d -name 'asr_parakeet*' 2>/dev/null | wc -l" 2>/dev/null || echo "0")
-    local total_files=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "find /opt/nim-cache -type f -name '*.onnx' -o -name '*.engine' -o -name '*.plan' 2>/dev/null | wc -l" 2>/dev/null || echo "0")
+    local extracted_models=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "find /opt/nim-cache -maxdepth 3 -type d -name 'asr_parakeet*' 2>/dev/null | wc -l | head -1" 2>/dev/null || echo "0")
+    local total_files=$(ssh -i "$SSH_KEY" ubuntu@$GPU_HOST "find /opt/nim-cache -type f -name '*.onnx' -o -name '*.engine' -o -name '*.plan' 2>/dev/null | wc -l | head -1" 2>/dev/null || echo "0")
     
-    if [[ "$extracted_models" -gt 0 ]]; then
+    extracted_models=$(echo "$extracted_models" | tr -d '\n\r' | grep -o '[0-9]*' | head -1)
+    total_files=$(echo "$total_files" | tr -d '\n\r' | grep -o '[0-9]*' | head -1)
+    
+    if [[ "${extracted_models:-0}" -gt 0 ]]; then
         echo "   Model directories: $extracted_models/3 created"
         echo "   Model files extracted: $total_files"
     fi
