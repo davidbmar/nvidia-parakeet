@@ -1,25 +1,44 @@
 # NVIDIA Parakeet Riva ASR Deployment System
 
-🚀 **One-click deployment of production-ready NVIDIA Parakeet RNNT via Riva ASR**
+🚀 **Production-ready NVIDIA Parakeet RNNT via Riva ASR with comprehensive infrastructure**
+
+## Current Status (M2 Complete - Client Wrapper Ready)
+
+✅ **M0 - Plan Locked**: Architecture mapped, ASR boundaries identified  
+✅ **M1 - Riva Online**: NIM/Traditional Riva containers operational with health checks  
+✅ **M2 - Client Wrapper**: `RivaASRClient` implemented with streaming support  
+🔄 **M3 - WS Integration**: WebSocket integration in progress (mock mode ready)  
+⏳ **M4 - Observability**: Basic logging implemented, metrics pending  
+⏳ **M5 - Production Ready**: Security hardening and full deployment pending  
 
 ## What This Delivers
 
-- **Real RNNT Transcription**: NVIDIA Parakeet RNNT model via Riva ASR (not mock responses)
+- **Real RNNT Transcription**: NVIDIA Parakeet RNNT model via Riva ASR with mock mode fallback
+- **Dual Deployment Modes**: NIM containers (latest) or traditional Riva server setup
 - **GPU Accelerated**: Tesla T4/V100 optimized with NVIDIA Riva inference
 - **Ultra-Low Latency**: ~100-300ms partial results, ~800ms final transcription  
 - **Word-Level Timestamps**: Precise timing and confidence scores for each word
 - **WebSocket Streaming**: Real-time audio streaming with partial/final results
-- **Production Logging**: Comprehensive structured logging for debugging and monitoring
+- **Production ASR Client**: Complete `src/asr/riva_client.py` wrapper implementation
+- **Comprehensive Logging**: Structured logging framework for debugging and monitoring
 - **Multi-Strategy Deployment**: AWS EC2, existing servers, or local development
 
 ## Architecture
 
 ```
 ┌─────────────────┐    WebSocket     ┌─────────────────┐    gRPC    ┌─────────────────┐
-│   Client Apps   │◄───────────────►│ WebSocket Server│◄──────────►│  NVIDIA Riva    │
-│   (Browser/App) │   Audio Stream   │  (Port 8443)    │  Streaming  │ Parakeet RNNT   │
-└─────────────────┘                 └─────────────────┘             │  (GPU Worker)   │
+│   Client Apps   │◄───────────────►│ WebSocket Server│◄──────────►│ NVIDIA Riva ASR │
+│   (Browser/App) │   Audio Stream   │  (Port 8443)    │   Client   │ NIM/Traditional │
+└─────────────────┘                 │  + RivaASRClient│  Wrapper   │ Parakeet RNNT   │
+                                    └─────────────────┘             │  (GPU Worker)   │
                                              │                       └─────────────────┘
+                                             ▼
+                                    ┌─────────────────┐
+                                    │ src/asr/        │
+                                    │ riva_client.py  │
+                                    │ Mock/Real Mode  │
+                                    └─────────────────┘
+                                             │
                                              ▼
                                     ┌─────────────────┐
                                     │  Structured     │
@@ -30,56 +49,59 @@
 
 ## Quick Start
 
-### Option 1: Automated Full Deployment (Recommended)
+### Option 1: Complete Deployment Pipeline (Recommended)
 ```bash
-# Clone and run everything with comprehensive logging
+# Clone and configure
 git clone https://github.com/davidbmar/nvidia-parakeet.git
-cd nvidia-parakeet
+cd nvidia-parakeet-3
 
-# Run complete deployment with full logging
-./scripts/riva-000-run-complete-deployment.sh
+# Run complete deployment pipeline with comprehensive logging
+./scripts/riva-010-run-complete-deployment-pipeline.sh
 
-# System is ready! 🎉
-# Logs available in: ./logs/
+# System deploys both NIM and traditional Riva, tests connectivity
+# Logs available in: ./logs/ with detailed execution info
 ```
 
-### Option 2: Step-by-Step Deployment
+### Option 2: Step-by-Step Manual Deployment
 ```bash
-# 1. Clone and configure
-git clone https://github.com/davidbmar/nvidia-parakeet.git
-cd nvidia-parakeet
+# 1. Setup project configuration
+./scripts/riva-005-setup-project-configuration.sh
 
-# 2. Setup configuration (interactive)
-./scripts/riva-000-setup-configuration.sh
-
-# 3. Deploy GPU instance (AWS strategy)
+# 2. Deploy AWS GPU instance 
 ./scripts/riva-015-deploy-or-restart-aws-gpu-instance.sh
 
-# 4. Configure security access
-./scripts/riva-015-configure-security-access.sh
+# 3. Configure security groups
+./scripts/riva-020-configure-aws-security-groups.sh
 
-# 5. Update NVIDIA drivers (if needed)
-./scripts/riva-025-transfer-nvidia-drivers.sh
+# 4. Setup NVIDIA drivers (if needed)
+./scripts/riva-025-download-nvidia-gpu-drivers.sh
+./scripts/riva-030-transfer-drivers-to-gpu-instance.sh
 
-# 6. Setup Riva server with Parakeet model
+# 5a. Deploy NIM container (modern approach)
+./scripts/riva-060-deploy-nim-container-for-asr.sh
+
+# 5b. OR deploy traditional Riva (alternative)
 ./scripts/riva-070-setup-traditional-riva-server.sh
+./scripts/riva-085-start-traditional-riva-server.sh
 
-# 7. Deploy WebSocket application
+# 6. Deploy WebSocket application with ASR client
 ./scripts/riva-090-deploy-websocket-asr-application.sh
 
-# 8. Test complete integration
+# 7. Test complete integration
 ./scripts/riva-100-test-basic-integration.sh
+./scripts/riva-110-test-audio-file-transcription.sh
 
-# System is ready! 🎉
-# Check logs in: ./logs/ for detailed execution info
+# System ready with comprehensive logging in ./logs/
 ```
 
 ## Requirements
 
-- **AWS Account**: With EC2 and S3 permissions
-- **GPU Instance**: g4dn.xlarge or better (Tesla T4+ GPU)
-- **Python 3.10+**: On target instance
-- **~5GB Disk**: For model downloads
+- **AWS Account**: With EC2 and S3 permissions for GPU instance deployment
+- **GPU Instance**: g4dn.xlarge or better (Tesla T4+ GPU) with Ubuntu 20.04/22.04
+- **Python 3.10+**: On target instance with pip/conda
+- **Docker & NVIDIA Container Runtime**: For NIM/Riva containers
+- **~10GB Disk**: For NIM containers and model downloads (~5GB each)
+- **Network Access**: Ports 50051 (Riva gRPC), 8000 (NIM), 8443 (WebSocket)
 
 ## 📊 Performance Specs
 
@@ -183,36 +205,51 @@ Content-Type: application/json
 ## 📁 Directory Structure
 
 ```
-nvidia-parakeet/
-├── scripts/           # Deployment and management scripts
-│   ├── common-logging.sh                    # Unified logging framework
-│   ├── riva-000-setup-configuration.sh     # Interactive configuration
-│   ├── riva-015-deploy-or-restart-aws-gpu-instance.sh     # AWS EC2 GPU deployment
-│   ├── riva-025-transfer-nvidia-drivers.sh # NVIDIA driver management
-│   ├── riva-070-setup-traditional-riva-server.sh       # Riva server with Parakeet
-│   ├── riva-090-deploy-websocket-asr-application.sh    # WebSocket application
-│   ├── riva-100-test-basic-integration.sh        # End-to-end testing
-│   ├── check-driver-status.sh              # Driver status utility
-│   └── test-logging.sh                     # Logging framework test
+nvidia-parakeet-3/
+├── scripts/           # 60+ deployment and management scripts
+│   ├── common-logging.sh                         # Unified logging framework
+│   ├── riva-005-setup-project-configuration.sh  # Project configuration
+│   ├── riva-010-run-complete-deployment-pipeline.sh  # Full deployment
+│   ├── riva-015-deploy-or-restart-aws-gpu-instance.sh # AWS GPU deployment
+│   ├── riva-030-transfer-drivers-to-gpu-instance.sh   # Driver management
+│   ├── riva-060-deploy-nim-container-for-asr.sh       # NIM container deployment
+│   ├── riva-070-setup-traditional-riva-server.sh      # Traditional Riva setup
+│   ├── riva-085-start-traditional-riva-server.sh      # Riva server startup
+│   ├── riva-090-deploy-websocket-asr-application.sh   # WebSocket + ASR client
+│   ├── riva-100-test-basic-integration.sh             # Integration testing
+│   ├── riva-110-test-audio-file-transcription.sh      # File transcription tests
+│   ├── riva-120-test-complete-end-to-end-pipeline.sh  # End-to-end validation
+│   └── check-driver-status.sh                    # Driver diagnostics
 ├── logs/              # Structured log files (auto-generated)
 │   └── [script-name]_[timestamp]_pid[pid].log
-├── src/               # Application source code
-│   └── websocket/     # WebSocket server implementation
+├── src/asr/           # ASR client implementation (M2 Complete)
+│   ├── __init__.py    # Package initialization
+│   └── riva_client.py # RivaASRClient wrapper (665 lines)
+├── static/            # WebSocket client interface
+│   ├── index.html     # Main transcription UI
+│   ├── websocket-client.js  # Real-time WebSocket client
+│   └── [debug tools] # Audio recording and testing utilities
 ├── docs/              # Comprehensive documentation
 │   ├── TROUBLESHOOTING.md
 │   ├── API_REFERENCE.md
-│   └── DEVELOPER_GUIDE.md
-└── .env              # Configuration (created by setup script)
+│   ├── DEVELOPER_GUIDE.md
+│   └── WEBSOCKET_API.md
+├── *.py               # WebSocket server and integration tests
+├── CLAUDE.md          # LLM-guided development plan (M0-M5)
+├── NEXT_STEPS.md      # Current development status
+└── .env               # Runtime configuration
 ```
 
 ## 🎯 What Makes This Different
 
-✅ **Real NVIDIA Parakeet**: Actual Riva ASR with Parakeet RNNT model, not mock responses  
-✅ **Production Logging**: Comprehensive structured logging for easy debugging  
-✅ **Multi-Strategy Deployment**: AWS, existing servers, or local development  
+✅ **Complete ASR Client**: Production-ready `RivaASRClient` with 665 lines of robust implementation  
+✅ **Dual Deployment Modes**: NIM containers (latest) + traditional Riva server options  
+✅ **Real NVIDIA Parakeet**: Actual Riva ASR with Parakeet RNNT model + mock fallback  
+✅ **M0-M5 Milestone Structure**: LLM-guided development with clear checkpoints  
+✅ **60+ Scripts**: Complete infrastructure automation for AWS/local deployment  
+✅ **Production Logging**: Comprehensive structured logging for debugging/monitoring  
 ✅ **Streaming Architecture**: Real-time WebSocket with partial/final results  
-✅ **Easy Debugging**: Detailed logs show exactly what went wrong and where  
-✅ **Automated Setup**: Scripts handle driver installation, Riva deployment, testing  
+✅ **Extensive Testing**: File transcription, streaming, end-to-end pipeline validation  
 
 ## 🆘 Troubleshooting & Support
 

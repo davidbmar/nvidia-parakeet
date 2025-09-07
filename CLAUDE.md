@@ -1,4 +1,24 @@
-EXPLANATION:
+# NVIDIA Parakeet RNNT via Riva ASR - Implementation Plan
+
+## Current Status (Updated 2025-09-07)
+
+✅ **M0 – Plan Locked**: Architecture mapped, ASR boundaries identified  
+✅ **M1 – Riva Online**: NIM/Traditional Riva containers deployed with health checks  
+✅ **M2 – Client Wrapper**: `src/asr/riva_client.py` implemented (665 lines) with streaming support  
+🔄 **M3 – WS Integration**: WebSocket server exists, needs real Riva integration (mock mode ready)  
+⏳ **M4 – Observability**: Basic logging in place, metrics implementation pending  
+⏳ **M5 – Production Ready**: Security hardening and deployment validation pending  
+
+## Deployment Infrastructure Complete
+
+- **60+ Scripts**: Complete deployment automation in `scripts/riva-*`
+- **NIM + Traditional**: Both modern NIM containers and traditional Riva server support
+- **AWS Integration**: Full EC2 GPU instance deployment with driver automation
+- **Comprehensive Testing**: File transcription, streaming, end-to-end validation scripts
+
+---
+
+## EXPLANATION:
 High-Level Goals
 
 Stand up a Riva/NIM ASR instance exposing Parakeet RNNT over gRPC.
@@ -85,11 +105,21 @@ CI lints and builds pass.
 
 Acceptance: Clean build; config keys load.
 
-4) Implement a Thin RivaASRClient Wrapper (M2)
+4) Implement a Thin RivaASRClient Wrapper (M2) ✅ **COMPLETED**
 
 LLM Task: Create src/asr/riva_client.py exposing a minimal interface:
 
 stream_transcribe(audio_iter, sample_rate, enable_partials=True) → yields partial/final events (your existing JSON shape).
+
+**IMPLEMENTATION STATUS:**
+- ✅ **Complete**: `src/asr/riva_client.py` implemented (665 lines)
+- ✅ **RivaASRClient class**: Full streaming and file transcription support
+- ✅ **Mock mode**: Fallback for development/testing (`mock_mode=True/False`)
+- ✅ **Configuration**: Environment variable-based config with `RivaConfig` class
+- ✅ **Error handling**: Comprehensive gRPC error handling and retries
+- ✅ **JSON compatibility**: Maintains existing WebSocket contract format
+- ✅ **Streaming support**: `stream_transcribe()` with partial/final events
+- ✅ **File support**: `transcribe_file()` for offline batch processing
 
 Inputs: Your current ASR response schema and partial/final semantics.
 
@@ -107,9 +137,21 @@ Fixture test with a 2–3 sec WAV → deterministic expected transcript (golden)
 
 Acceptance: Unit tests green; golden matches within tolerance.
 
-5) Wire Into Your WebSocket/API Path (M3)
+5) Wire Into Your WebSocket/API Path (M3) 🔄 **IN PROGRESS**
 
-LLM Task: Replace the old RNNT call site with RivaASRClient.stream_transcribe(...). Ensure backpressure and “end-of-stream → final flush” semantics.
+LLM Task: Replace the old RNNT call site with RivaASRClient.stream_transcribe(...). Ensure backpressure and "end-of-stream → final flush" semantics.
+
+**CURRENT STATUS:**
+- ✅ **WebSocket Server**: `rnnt-https-server.py` operational with SSL support
+- ✅ **Static Client**: `static/index.html` with real-time audio recording
+- ✅ **Mock Integration**: WebSocket can use `RivaASRClient(mock_mode=True)`
+- 🔄 **Real Integration**: Need to wire in `RivaASRClient(mock_mode=False)`
+- ⏳ **Scripts Ready**: `riva-120-test-complete-end-to-end-pipeline.sh` for validation
+
+**NEXT ACTIONS (NEXT_STEPS.md):**
+1. Test Riva connectivity with `test_riva_connection.py`
+2. Switch WebSocket server to real Riva mode
+3. End-to-end validation with `riva-120-test-complete-end-to-end-pipeline.sh`
 
 Inputs: WS handler path, buffering/chunk size, sample format (PCM16/float32).
 

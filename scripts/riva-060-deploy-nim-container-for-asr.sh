@@ -25,7 +25,7 @@ fi
 source "${SCRIPT_DIR}/riva-common-functions.sh"
 
 # Script initialization
-print_script_header "047" "Deploy NVIDIA NIM Container" "Starting Parakeet ASR service"
+print_script_header "060" "Deploy NVIDIA NIM Container" "Starting Parakeet ASR service"
 
 # Configuration
 CONTAINER_IMAGE="nvcr.io/nim/nvidia/parakeet-ctc-riva-1-1b:1.0.0"
@@ -158,10 +158,19 @@ run_remote "
     curl -s --max-time 10 http://localhost:8000/v1/models 2>/dev/null | python3 -m json.tool 2>/dev/null || echo 'Models endpoint initializing...'
 "
 
-complete_script_success "047" "NIM_CONTAINER_DEPLOYED" "./scripts/riva-060-test-riva-connectivity.sh"
+# Add NIM ports to .env configuration
+print_step_header "6" "Update Environment Configuration"
+
+echo "   📝 Adding NIM port configuration to .env..."
+update_or_append_env "NIM_HTTP_PORT" "8000"
+update_or_append_env "NIM_GRPC_PORT" "50051"
+update_or_append_env "NIM_ADDITIONAL_PORT" "8080"
+echo "   ✅ NIM ports added to environment"
+
+complete_script_success "060" "NIM_CONTAINER_DEPLOYED" "./scripts/riva-061-open-nim-ports.sh"
 
 echo ""
-echo "🎉 RIVA-047 Complete: NVIDIA NIM ASR Service Deployed!"
+echo "🎉 RIVA-060 Complete: NVIDIA NIM ASR Service Deployed!"
 echo "======================================================="
 echo "✅ NIM container deployed and running"
 echo "✅ Parakeet ASR model loading"
@@ -173,9 +182,9 @@ echo "   • Health: http://${RIVA_HOST}:8000/v1/health"
 echo "   • Models: http://${RIVA_HOST}:8000/v1/models"
 echo ""
 echo "📍 Next Steps:"
-echo "   1. Wait 5-10 minutes for full initialization"
-echo "   2. Run: ./scripts/riva-060-test-riva-connectivity.sh"
-echo "   3. Enable real mode: ./scripts/riva-075-enable-real-riva-mode.sh"
+echo "   1. Run: ./scripts/riva-061-open-nim-ports.sh"
+echo "   2. Wait 5-10 minutes for full initialization"
+echo "   3. Test connectivity: ./scripts/riva-060-test-riva-connectivity.sh"
 echo ""
 echo "💡 Monitor logs: ssh ubuntu@${RIVA_HOST} 'docker logs -f ${CONTAINER_NAME}'"
 echo ""

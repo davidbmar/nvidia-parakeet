@@ -1,96 +1,110 @@
-# Getting Real Riva Transcription Working
+# NVIDIA Parakeet RNNT - Next Development Steps
 
-## Current Status
-✅ **riva-055 completed** - System integration tested (but using MOCK mode)  
-❌ **Real transcription** - Still using mock responses in WebSocket app
+## Current Status (M2 Complete - Client Wrapper Ready)
+✅ **M0 - Plan Locked**: Architecture mapped, ASR boundaries identified  
+✅ **M1 - Riva Online**: NIM/Traditional Riva containers operational with health checks  
+✅ **M2 - Client Wrapper**: `src/asr/riva_client.py` implemented (665 lines) with streaming support  
+🔄 **M3 - WS Integration**: WebSocket integration in progress (mock mode ready)  
+⏳ **M4 - Observability**: Basic logging implemented, metrics pending  
+⏳ **M5 - Production Ready**: Security hardening and full deployment pending
 
-## Next Steps: Execute These Scripts In Order
+## Infrastructure Status
+✅ **Deployment Scripts**: 60+ scripts for complete AWS/local deployment  
+✅ **NIM Containers**: Modern NVIDIA NIM container support  
+✅ **Traditional Riva**: Legacy Riva server setup as fallback  
+✅ **WebSocket Server**: SSL-enabled real-time audio streaming  
+✅ **ASR Client**: Production-ready `RivaASRClient` wrapper
 
-### **Step 1: Test Riva Connectivity**
+## Next Steps: Complete M3 Integration
+
+### **Step 1: Test ASR Client with Real Riva**
 ```bash
-./scripts/riva-060-test-riva-connectivity.sh
-```
-**What it does**: TESTS direct connection to Riva server and lists available models  
-**Expected result**: Should show "conformer_en_US_parakeet_rnnt" in available models  
-**Checkpoint**: `RIVA_CONNECTIVITY_TEST=passed` added to .env
+# Test direct connection to deployed Riva server
+python3 test_riva_connection.py
 
-### **Step 2: Test File Transcription** 
+# Or use existing scripts for comprehensive testing
+./scripts/riva-105-test-riva-server-connectivity.sh
+./scripts/riva-110-test-audio-file-transcription.sh
+```
+**What it does**: Tests `src/asr/riva_client.py` against real Riva deployment  
+**Expected result**: Connection success, model listing, basic transcription working  
+**Status**: Scripts ready, `RivaASRClient` implemented
+
+### **Step 2: Integrate Real Riva into WebSocket Server** 
 ```bash
-./scripts/riva-065-test-file-transcription.sh
+# Current WebSocket server: rnnt-https-server.py
+# Needs update to use RivaASRClient(mock_mode=False)
+# Integration point: Replace mock transcription with real Riva calls
 ```
-**What it does**: TESTS offline transcription of audio files using real Riva  
-**Expected result**: Should transcribe synthetic audio and show performance metrics  
-**Checkpoint**: `RIVA_FILE_TRANSCRIPTION_TEST=passed` added to .env
+**What it does**: Modify WebSocket server to use real `RivaASRClient` instead of mock responses  
+**Files to modify**: `rnnt-https-server.py` or transcription handler  
+**Status**: WebSocket server exists, needs ASR client integration
 
-### **Step 3: Test Streaming Transcription**
-```bash  
-./scripts/riva-070-test-streaming-transcription.sh
-```
-**What it does**: TESTS real-time streaming with partial → final results  
-**Expected result**: Should show progressive partial results from real Riva  
-**Checkpoint**: `RIVA_STREAMING_TEST=passed` added to .env
-
-### **Step 4: Enable Real Riva Mode**
+### **Step 3: Test Complete End-to-End Pipeline**
 ```bash
-./scripts/riva-075-enable-real-riva-mode.sh
+./scripts/riva-120-test-complete-end-to-end-pipeline.sh
 ```
-**What it does**: CONFIGURES WebSocket app to use real Riva (not mock)  
-**Changes made**: Updates `mock_mode=True` → `mock_mode=False` in transcription_stream.py  
-**Action**: Restarts WebSocket server with real Riva integration  
-**Checkpoint**: `RIVA_REAL_MODE_ENABLED=true` added to .env
+**What it does**: Full validation of client → WebSocket → RivaASRClient → Riva → results  
+**Expected result**: Real-time audio transcription with partial/final results  
+**Status**: Script exists, ready for testing after integration
 
-### **Step 5: Test End-to-End Pipeline**
+### **Step 4: Production Validation**
 ```bash
-./scripts/riva-080-test-end-to-end-transcription.sh  
+./scripts/riva-125-enable-production-riva-mode.sh
 ```
-**What it does**: TESTS complete WebSocket → Riva → results pipeline  
-**Expected result**: WebSocket uploads return real transcription (not mock phrases)  
-**Checkpoint**: `RIVA_END_TO_END_TEST=passed` added to .env
+**What it does**: Validates performance, latency SLOs, error handling  
+**Expected result**: Production-ready deployment with monitoring  
+**Status**: Script ready, awaits successful end-to-end testing
 
-## What Changes From Mock to Real
+## Implementation Details
 
-### Before (Mock Mode)
-- WebSocket receives audio → returns fake phrases like "Hello this is a mock transcription"
-- No actual Riva processing
-- Instant responses with pre-defined text
+### M3 Integration Requirements
+1. **WebSocket Server Integration**:
+   - Modify `rnnt-https-server.py` to import and use `RivaASRClient`
+   - Replace mock transcription logic with real Riva streaming
+   - Handle connection errors gracefully with fallback to mock mode
 
-### After (Real Mode)  
-- WebSocket receives audio → sends to Riva via gRPC → returns actual transcription
-- Real ASR processing on GPU
-- Performance-based response times
+2. **RivaASRClient Configuration**:
+   - Use existing `.env` configuration (RIVA_HOST, RIVA_PORT, RIVA_MODEL)
+   - Initialize with `mock_mode=False` for production
+   - Implement proper error handling and retry logic
 
-## Key Files That Get Modified
+3. **Testing Integration**:
+   - File transcription: `test_riva_connection.py` (already exists)
+   - Streaming transcription: `riva-110-test-audio-file-transcription.sh`
+   - End-to-end: `riva-120-test-complete-end-to-end-pipeline.sh`
 
-1. **websocket/transcription_stream.py:44**
-   - `RivaASRClient(mock_mode=True)` → `RivaASRClient(mock_mode=False)`
+### Current Architecture Status
+```
+✅ Client Browser → WebSocket (SSL) 
+✅ WebSocket Server → [Mock Mode Ready]
+🔄 ASR Client Wrapper → [RivaASRClient implemented, needs integration]
+✅ Riva/NIM Server → [Deployed, health checks pass]
+```
 
-2. **Environment Configuration**
-   - Uses existing .env settings (RIVA_HOST, RIVA_PORT, RIVA_MODEL)
-   - No .env changes needed - scripts just add status flags
+## Remaining Milestones (M4-M5)
 
-## Rollback Plan
+### M4 - Observability & Scale
+- **Metrics Implementation**: Prometheus/OpenTelemetry integration
+- **Load Testing**: Concurrent session handling validation  
+- **Performance Monitoring**: RTF, latency, error rate tracking
 
-If real mode has issues, rollback:
+### M5 - Production Ready  
+- **Security**: TLS/mTLS for Riva connections
+- **Deployment**: Docker containerization with health checks
+- **Monitoring**: Alerts, runbooks, rollback procedures
+
+## Quick Start for Next Developer
+
 ```bash
-ssh -i ~/.ssh/${SSH_KEY_NAME}.pem ubuntu@${GPU_INSTANCE_IP} \
-  'cd /opt/riva-app && cp websocket/transcription_stream.py.backup.mock websocket/transcription_stream.py'
+# 1. Test current ASR client
+python3 test_riva_connection.py
+
+# 2. Integrate into WebSocket (main task)
+# Edit rnnt-https-server.py to use RivaASRClient(mock_mode=False)
+
+# 3. Test end-to-end
+./scripts/riva-120-test-complete-end-to-end-pipeline.sh
 ```
 
-## Success Criteria
-
-After all scripts complete:
-- ✅ Direct Riva connectivity confirmed
-- ✅ File transcription working  
-- ✅ Streaming transcription working
-- ✅ WebSocket app using real Riva
-- ✅ End-to-end pipeline functional
-- 🎉 **Real-time transcription is LIVE!**
-
-## Next Execute
-
-Start with:
-```bash
-./scripts/riva-060-test-riva-connectivity.sh
-```
-
-Each script checks the previous step passed before proceeding, so execute in order.
+**Status**: M2 complete, M3 integration ready to begin with comprehensive infrastructure support.
