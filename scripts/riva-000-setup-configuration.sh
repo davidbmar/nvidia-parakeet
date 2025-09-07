@@ -351,7 +351,7 @@ echo ""
 echo -e "${GREEN}🎯 Next Steps:${NC}"
 case $DEPLOYMENT_STRATEGY in
     1)
-        echo "1. Deploy GPU instance: ./scripts/riva-010-deploy-gpu-instance.sh"
+        echo "1. Deploy GPU instance: ./scripts/riva-010-restart-existing-or-deploy-new-gpu-instance.sh"
         echo "2. Setup Riva server: ./scripts/riva-020-setup-riva-server.sh"
         echo "3. Deploy WebSocket app: ./scripts/riva-030-deploy-websocket-app.sh"
         echo "4. Test system: ./scripts/riva-040-test-system.sh"

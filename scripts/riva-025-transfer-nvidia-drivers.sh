@@ -62,7 +62,7 @@ run_on_server() {
         fi
     else
         log_error "SSH key not found: $HOME/.ssh/${SSH_KEY_NAME}.pem"
-        log_error "Run: ./scripts/riva-010-deploy-gpu-instance.sh"
+        log_error "Run: ./scripts/riva-010-restart-existing-or-deploy-new-gpu-instance.sh"
         return 1
     fi
 }

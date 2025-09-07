@@ -39,7 +39,7 @@ fi
 # Check if security group exists
 if [ -z "$SECURITY_GROUP_ID" ]; then
     echo -e "${RED}❌ Security group ID not found in configuration${NC}"
-    echo "Please run: ./scripts/riva-010-deploy-gpu-instance.sh first"
+    echo "Please run: ./scripts/riva-010-restart-existing-or-deploy-new-gpu-instance.sh first"
     exit 1
 fi
 

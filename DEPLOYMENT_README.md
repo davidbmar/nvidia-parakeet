@@ -18,7 +18,7 @@ This repository provides a complete, repeatable infrastructure deployment system
 ./scripts/riva-000-setup-configuration.sh
 
 # Step 2: Deploy AWS GPU instance (Strategy 1 only)
-./scripts/riva-010-deploy-gpu-instance.sh
+./scripts/riva-010-restart-existing-or-deploy-new-gpu-instance.sh
 
 # Step 3: Configure security and access
 ./scripts/riva-015-configure-security-access.sh

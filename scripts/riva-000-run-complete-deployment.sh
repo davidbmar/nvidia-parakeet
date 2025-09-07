@@ -184,7 +184,7 @@ main_deployment() {
     case $DEPLOYMENT_STRATEGY in
         1)
             # AWS EC2 Deployment
-            run_step "$SCRIPT_DIR/riva-010-deploy-gpu-instance.sh" "GPU Instance Deployment"
+            run_step "$SCRIPT_DIR/riva-010-restart-existing-or-deploy-new-gpu-instance.sh" "GPU Instance Deployment"
             run_step "$SCRIPT_DIR/riva-015-deploy-riva.sh" "Riva Server Setup"
             run_step "$SCRIPT_DIR/riva-030-deploy-websocket-app.sh" "WebSocket App Deployment"
             run_step "$SCRIPT_DIR/riva-040-test-system.sh" "System Testing"

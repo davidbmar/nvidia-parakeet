@@ -53,7 +53,7 @@ cd nvidia-parakeet
 ./scripts/riva-000-setup-configuration.sh
 
 # 3. Deploy GPU instance (AWS strategy)
-./scripts/riva-010-deploy-gpu-instance.sh
+./scripts/riva-010-restart-existing-or-deploy-new-gpu-instance.sh
 
 # 4. Configure security access
 ./scripts/riva-015-configure-security-access.sh
@@ -187,7 +187,7 @@ nvidia-parakeet/
 ├── scripts/           # Deployment and management scripts
 │   ├── common-logging.sh                    # Unified logging framework
 │   ├── riva-000-setup-configuration.sh     # Interactive configuration
-│   ├── riva-010-deploy-gpu-instance.sh     # AWS EC2 GPU deployment
+│   ├── riva-010-restart-existing-or-deploy-new-gpu-instance.sh     # AWS EC2 GPU deployment
 │   ├── riva-025-transfer-nvidia-drivers.sh # NVIDIA driver management
 │   ├── riva-040-setup-riva-server.sh       # Riva server with Parakeet
 │   ├── riva-045-deploy-websocket-app.sh    # WebSocket application

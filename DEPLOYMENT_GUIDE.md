@@ -41,7 +41,7 @@ This executes all steps in sequence with detailed logging. Logs are saved in `lo
 
 ### Step 010: Deploy GPU Instance  
 ```bash
-./scripts/riva-010-deploy-gpu-instance.sh
+./scripts/riva-010-restart-existing-or-deploy-new-gpu-instance.sh
 ```
 - Launches AWS GPU instance (g4dn.xlarge recommended)
 - Configures security groups and networking  

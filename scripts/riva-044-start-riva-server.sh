@@ -55,7 +55,7 @@ run_on_server() {
         1)
             # AWS EC2 - run via SSH
             if [ -z "$SSH_KEY_NAME" ] || [ -z "$RIVA_HOST" ] || [ "$RIVA_HOST" = "auto_detected" ]; then
-                echo -e "${RED}❌ SSH configuration missing. Run riva-010-deploy-gpu-instance.sh first${NC}"
+                echo -e "${RED}❌ SSH configuration missing. Run riva-010-restart-existing-or-deploy-new-gpu-instance.sh first${NC}"
                 exit 1
             fi
             

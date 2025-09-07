@@ -34,7 +34,7 @@ source "$ENV_FILE"
 if [ -z "$GPU_INSTANCE_ID" ] || [ -z "$GPU_INSTANCE_IP" ] || [ -z "$SSH_KEY_NAME" ]; then
     echo -e "${RED}❌ Missing required configuration${NC}"
     echo "Please run previous steps first:"
-    echo "  1. ./scripts/riva-010-deploy-gpu-instance.sh"
+    echo "  1. ./scripts/riva-010-restart-existing-or-deploy-new-gpu-instance.sh"
     echo "  2. ./scripts/riva-015-configure-security-access.sh"
     exit 1
 fi
