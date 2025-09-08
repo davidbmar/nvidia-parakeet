@@ -91,9 +91,13 @@ while true; do
         echo -e "${YELLOW}   💡 Solution: Check NIM_HTTP_PORT in .env (current: $NIM_HTTP_PORT)${NC}"
     fi
     
-    if [ "$BUILD_ATTEMPTS" -gt 1 ]; then
-        echo -e "${RED}🔄 WARNING: Multiple TensorRT builds detected ($BUILD_ATTEMPTS attempts)${NC}"
-        echo -e "${YELLOW}   Possible deployment loop - may need intervention${NC}"
+    # Check for legitimate multi-component builds vs problematic loops
+    UNIQUE_BUILD_TEMPS=$(run_remote "docker logs ${CONTAINER_NAME} 2>&1 | grep 'Building TensorRT engine for /tmp/' | awk '{print \$8}' | sort -u | wc -l" || echo "1")
+    
+    if [ "$BUILD_ATTEMPTS" -gt 1 ] && [ "$UNIQUE_BUILD_TEMPS" -eq 1 ]; then
+        # Same temp directory = problematic loop
+        echo -e "${RED}🔄 WARNING: TensorRT build loop detected ($BUILD_ATTEMPTS attempts, same temp dir)${NC}"
+        echo -e "${YELLOW}   Deployment may be stuck - consider intervention${NC}"
         LOOP_COUNT=$((LOOP_COUNT + 1))
         
         if [ "$LOOP_COUNT" -gt 2 ]; then
@@ -101,6 +105,10 @@ while true; do
             echo "      docker stop ${CONTAINER_NAME} && docker rm ${CONTAINER_NAME}"
             echo "      Then re-run deployment with different port"
         fi
+    elif [ "$BUILD_ATTEMPTS" -gt 1 ]; then
+        # Multiple temp directories = multi-component model (normal)
+        echo -e "${GREEN}🔧 Multi-component model: Building $UNIQUE_BUILD_TEMPS TensorRT engines${NC}"
+        echo -e "${BLUE}   TDT models require separate engines for encoder/decoder components${NC}"
     fi
     
     # Phase 2: Resource Monitoring
