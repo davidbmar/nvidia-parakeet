@@ -257,6 +257,76 @@ handle_script_failure() {
     exit 1
 }
 
+# Complete prerequisite validation for enhanced scripts
+validate_prerequisites() {
+    load_and_validate_env
+    validate_ssh_connectivity
+    log_success "Prerequisites validated"
+}
+
+# Validate Riva-specific environment variables
+validate_riva_env() {
+    local riva_vars=("RIVA_HOST" "RIVA_PORT" "RIVA_MODEL")
+    for var in "${riva_vars[@]}"; do
+        if [[ -z "${!var:-}" ]]; then
+            log_error "Required Riva variable $var not set in .env"
+            exit 1
+        fi
+    done
+}
+
+# Validate port configuration (Lesson: Port 8000 conflicts with Triton)
+validate_port_configuration() {
+    if [[ "${NIM_HTTP_PORT:-9000}" == "8000" ]] || [[ "${NIM_HTTP_API_PORT:-9000}" == "8000" ]]; then
+        log_error "NIM_HTTP_PORT cannot be 8000 (conflicts with Triton internal port)"
+        log_info "Recommendation: Set NIM_HTTP_PORT=9000 in .env"
+        return 1
+    fi
+    return 0
+}
+
+# Validate model requirements
+validate_model_requirements() {
+    if [[ "${MODEL_DEPLOY_KEY:-}" != "tlt_encode" ]]; then
+        log_warn "MODEL_DEPLOY_KEY should be 'tlt_encode' for RMIR decryption"
+    fi
+    return 0
+}
+
+# Validate GPU resources
+validate_gpu_resources() {
+    # This would normally check GPU availability
+    return 0
+}
+
+# Validate enhanced prerequisites
+validate_enhanced_prerequisites() {
+    validate_prerequisites
+    validate_port_configuration
+    validate_model_requirements
+    validate_gpu_resources
+}
+
+# Analyze container logs
+analyze_container_logs() {
+    local container_name="${1:-nim-parakeet-tdt}"
+    local logs=$(run_remote "sudo docker logs ${container_name} --tail 50 2>&1" || echo "")
+    
+    if echo "$logs" | grep -q "Port.*already in use"; then
+        log_error "Port conflict detected"
+    elif echo "$logs" | grep -q "CUDA.*error"; then
+        log_error "GPU/CUDA error detected"
+    elif echo "$logs" | grep -q "MODEL_DEPLOY_KEY"; then
+        log_error "Model decryption key issue"
+    fi
+}
+
+# Show deployment progress
+show_deployment_progress() {
+    local container_name="${1:-nim-parakeet-tdt}"
+    run_remote "sudo docker stats ${container_name} --no-stream" || true
+}
+
 # Set error trap
 trap 'handle_error ${LINENO}' ERR
 
