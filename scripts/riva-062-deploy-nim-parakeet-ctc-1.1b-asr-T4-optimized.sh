@@ -142,11 +142,11 @@ run_remote "
         --restart unless-stopped \\
         --gpus all \\
         --shm-size=2g \\
-        -p 8000:8000 \\
+        -p 8000:9000 \\
         -p 50051:50051 \\
         -v /opt/nim-cache:/opt/nim/.cache \\
         -e CUDA_VISIBLE_DEVICES=0 \\
-        -e NIM_HTTP_API_PORT=8000 \\
+        -e NIM_HTTP_API_PORT=9000 \\
         -e NIM_GRPC_API_PORT=50051 \\
         -e NIM_LOG_LEVEL=INFO \\
         -e NIM_MAX_BATCH_SIZE=4 \\
@@ -234,7 +234,7 @@ run_remote "
     # Test health endpoint
     echo 'Testing health endpoint...'
     for i in {1..5}; do
-        if curl -s --max-time 10 http://localhost:8000/v1/health 2>/dev/null | grep -q healthy; then
+        if curl -s --max-time 10 http://localhost:9000/v1/health 2>/dev/null | grep -q healthy; then
             echo '✅ Health check passed'
             break
         elif [ \$i -eq 5 ]; then
@@ -247,7 +247,7 @@ run_remote "
     
     # Test models endpoint
     echo 'Testing models endpoint...'
-    MODELS_RESPONSE=\$(curl -s --max-time 10 http://localhost:8000/v1/models 2>/dev/null || echo 'not_ready')
+    MODELS_RESPONSE=\$(curl -s --max-time 10 http://localhost:9000/v1/models 2>/dev/null || echo 'not_ready')
     if [[ \"\$MODELS_RESPONSE\" == *\"parakeet\"* ]]; then
         echo '✅ Models endpoint responding'
         echo 'T4-optimized model available:'

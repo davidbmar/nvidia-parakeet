@@ -28,7 +28,7 @@ print_script_header "063" "Unified NIM Deployment Monitor" "Real-time tracking w
 CONTAINER_NAME="${NIM_CONTAINER_NAME:-parakeet-nim-tdt-t4}"
 GPU_HOST="${GPU_INSTANCE_IP:-$RIVA_HOST}"
 SSH_KEY="$HOME/.ssh/${SSH_KEY_NAME}.pem"
-NIM_HTTP_PORT="${NIM_HTTP_PORT:-8080}"
+NIM_HTTP_PORT="${NIM_HTTP_PORT:-9000}"
 NIM_GRPC_PORT="${NIM_GRPC_PORT:-50051}"
 POLL_INTERVAL="${POLL_INTERVAL:-30}"  # Default 30 seconds between checks
 

@@ -177,14 +177,16 @@ run_remote "
         --restart unless-stopped \\
         --gpus all \\
         --shm-size=4g \\
-        -p ${NIM_HTTP_PORT}:8000 \\
+        -p ${NIM_HTTP_PORT}:9000 \\
         -p ${NIM_GRPC_PORT}:50051 \\
         -v /opt/nim-cache:/opt/nim/.cache \\
         -e CUDA_VISIBLE_DEVICES=0 \\
-        -e NIM_HTTP_API_PORT=8000 \\
+        -e NIM_HTTP_API_PORT=9000 \\
         -e NIM_GRPC_API_PORT=50051 \\
         -e NIM_LOG_LEVEL=INFO \\
-        -e NIM_MAX_BATCH_SIZE=6 \\
+        -e NIM_MAX_BATCH_SIZE=6 \
+        -e NIM_TRITON_MAX_BATCH_SIZE=4 \
+        -e NIM_TRITON_OPTIMIZATION_MODE=vram_opt \\
         -e NIM_ENABLE_STREAMING=true \\
         -e NIM_GPU_MEMORY_FRACTION=0.7 \\
         -e NIM_CACHE_PATH=/opt/nim/.cache \\
@@ -280,7 +282,7 @@ run_remote "
     # Test health endpoint
     echo 'Testing health endpoint...'
     for i in {1..8}; do
-        if curl -s --max-time 10 http://localhost:8000/v1/health 2>/dev/null | grep -q healthy; then
+        if curl -s --max-time 10 http://localhost:9000/v1/health 2>/dev/null | grep -q healthy; then
             echo '✅ TDT health check passed'
             break
         elif [ \$i -eq 8 ]; then
@@ -293,7 +295,7 @@ run_remote "
     
     # Test models endpoint
     echo 'Testing TDT models endpoint...'
-    MODELS_RESPONSE=\$(curl -s --max-time 10 http://localhost:8000/v1/models 2>/dev/null || echo 'not_ready')
+    MODELS_RESPONSE=\$(curl -s --max-time 10 http://localhost:9000/v1/models 2>/dev/null || echo 'not_ready')
     if [[ \"\$MODELS_RESPONSE\" == *\"parakeet\"* ]] || [[ \"\$MODELS_RESPONSE\" == *\"tdt\"* ]]; then
         echo '✅ TDT models endpoint responding'
         echo 'Available TDT model:'
