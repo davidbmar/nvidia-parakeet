@@ -30,6 +30,7 @@ GPU_HOST="${GPU_INSTANCE_IP:-$RIVA_HOST}"
 SSH_KEY="$HOME/.ssh/${SSH_KEY_NAME}.pem"
 NIM_HTTP_PORT="${NIM_HTTP_PORT:-8080}"
 NIM_GRPC_PORT="${NIM_GRPC_PORT:-50051}"
+POLL_INTERVAL="${POLL_INTERVAL:-30}"  # Default 30 seconds between checks
 
 # Colors
 GREEN='\033[0;32m'
@@ -240,8 +241,8 @@ while true; do
     EMPTY=$((BAR_LENGTH - FILLED))
     
     echo -n "   ["
-    printf '%*s' "$FILLED" | tr ' ' '█'
-    printf '%*s' "$EMPTY" | tr ' ' '░'
+    printf '%*s' "$FILLED" | tr ' ' '='
+    printf '%*s' "$EMPTY" | tr ' ' '-'
     echo "] ${PROGRESS}%"
     echo "   Estimated remaining: $EST_REMAINING"
     
@@ -253,7 +254,7 @@ while true; do
     fi
     
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo "Press Ctrl+C to stop monitoring | Refreshing in 10s..."
+    echo "Press Ctrl+C to stop monitoring | Refreshing in ${POLL_INTERVAL}s..."
     
-    sleep 10
+    sleep $POLL_INTERVAL
 done
