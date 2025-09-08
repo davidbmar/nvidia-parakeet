@@ -39,8 +39,14 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# Tracking variables
-START_TIME=$(date +%s)
+# Tracking variables - Use container start time for accurate progress
+CONTAINER_STARTED=$(run_remote "docker inspect ${CONTAINER_NAME} --format '{{.State.StartedAt}}' 2>/dev/null" || echo "")
+if [ ! -z "$CONTAINER_STARTED" ]; then
+    # Convert container start time to epoch
+    START_TIME=$(date -d "$CONTAINER_STARTED" +%s 2>/dev/null || $(date +%s))
+else
+    START_TIME=$(date +%s)
+fi
 LAST_PHASE=""
 LOOP_COUNT=0
 MAX_WAIT_TIME=2400  # 40 minutes max
