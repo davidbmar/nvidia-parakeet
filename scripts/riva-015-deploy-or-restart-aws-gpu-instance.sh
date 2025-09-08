@@ -42,11 +42,16 @@ if [ -z "$AWS_REGION" ] || [ -z "$AWS_ACCOUNT_ID" ] || [ -z "$GPU_INSTANCE_TYPE"
     exit 1
 fi
 
+# Set defaults for EBS configuration if not specified
+EBS_VOLUME_SIZE=${EBS_VOLUME_SIZE:-200}
+EBS_VOLUME_TYPE=${EBS_VOLUME_TYPE:-gp3}
+
 echo "Configuration:"
 echo "  • AWS Region: $AWS_REGION"
 echo "  • Account ID: $AWS_ACCOUNT_ID"
 echo "  • Instance Type: $GPU_INSTANCE_TYPE"
 echo "  • SSH Key: $SSH_KEY_NAME"
+echo "  • EBS Volume: ${EBS_VOLUME_SIZE}GB ($EBS_VOLUME_TYPE)"
 echo ""
 
 # Check if SSH key exists locally or in AWS
@@ -326,7 +331,7 @@ INSTANCE_ID=$(aws ec2 run-instances \
     --security-group-ids "$SG_ID" \
     --user-data "file://$USER_DATA_FILE" \
     --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=riva-asr-${DEPLOYMENT_ID}},{Key=Purpose,Value=ParakeetRivaASR},{Key=DeploymentId,Value=${DEPLOYMENT_ID}},{Key=CreatedBy,Value=riva-deployment-script}]" \
-    --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":100,"VolumeType":"gp3","DeleteOnTermination":true}}]' \
+    --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":'${EBS_VOLUME_SIZE:-200}',"VolumeType":"'${EBS_VOLUME_TYPE:-gp3}'","DeleteOnTermination":true}}]' \
     --query 'Instances[0].InstanceId' \
     --output text \
     --region "$AWS_REGION")

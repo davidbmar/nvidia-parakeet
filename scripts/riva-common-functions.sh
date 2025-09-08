@@ -264,7 +264,7 @@ update_env_status() {
     fi
     
     if grep -q "^${key}=" .env; then
-        sed -i "s/^${key}=.*/${key}=${value}/" .env
+        sed -i "s|^${key}=.*|${key}=${value}|" .env
     else
         echo "${key}=${value}" >> .env
     fi
@@ -283,7 +283,7 @@ update_or_append_env() {
     fi
     
     if grep -q "^${key}=" .env; then
-        sed -i "s/^${key}=.*/${key}=${value}/" .env
+        sed -i "s|^${key}=.*|${key}=${value}|" .env
     else
         echo "${key}=${value}" >> .env
     fi
