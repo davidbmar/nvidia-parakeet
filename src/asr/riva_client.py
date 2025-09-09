@@ -19,9 +19,9 @@ from enum import Enum
 try:
     import riva.client
     from riva.client.proto import riva_asr_pb2, riva_asr_pb2_grpc
-except ImportError:
+except ImportError as e:
     raise ImportError(
-        "Riva client not installed. Run: pip install nvidia-riva-client"
+        f"Riva client not installed or has dependency issues: {e}. Run: pip install nvidia-riva-client"
     )
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ class RivaConfig:
     api_key: Optional[str] = os.getenv("RIVA_API_KEY")
     
     # Model settings
-    model: str = os.getenv("RIVA_MODEL", "conformer_en_US_parakeet_rnnt")
+    model: str = os.getenv("RIVA_MODEL", "parakeet-tdt-0.6b-v2")
     language_code: str = os.getenv("RIVA_LANGUAGE_CODE", "en-US")
     enable_punctuation: bool = os.getenv("RIVA_ENABLE_AUTOMATIC_PUNCTUATION", "true").lower() == "true"
     enable_word_offsets: bool = os.getenv("RIVA_ENABLE_WORD_TIME_OFFSETS", "true").lower() == "true"
@@ -150,6 +150,7 @@ class RivaASRClient:
     async def _list_models(self) -> List[str]:
         """
         List available ASR models on Riva server
+        Note: NIM services may not support ListModels
         
         Returns:
             List of model names
@@ -164,9 +165,13 @@ class RivaASRClient:
             models = [model.name for model in response.models]
             logger.info(f"Available Riva models: {models}")
             return models
+        except AttributeError as e:
+            # NIM services don't have ListModels - use configured model
+            logger.info(f"ListModels not supported (NIM service) - using configured model: {self.config.model}")
+            return [self.config.model]
         except Exception as e:
-            logger.error(f"Failed to list models: {e}")
-            raise
+            logger.warning(f"Failed to list models: {e} - using configured model: {self.config.model}")
+            return [self.config.model]
     
     async def stream_transcribe(
         self,
@@ -297,7 +302,7 @@ class RivaASRClient:
         async def request_generator():
             # First request contains config
             yield riva_asr_pb2.StreamingRecognizeRequest(
-                streaming_config=config._to_proto()
+                streaming_config=config
             )
             
             # Subsequent requests contain audio
@@ -318,10 +323,16 @@ class RivaASRClient:
     
     def _async_to_sync_generator(self, async_gen):
         """Convert async generator to sync generator for gRPC"""
-        loop = asyncio.get_event_loop()
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # No event loop in current thread, create a new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
         while True:
             try:
-                future = asyncio.ensure_future(async_gen.__anext__())
+                future = asyncio.ensure_future(async_gen.__anext__(), loop=loop)
                 yield loop.run_until_complete(future)
             except StopAsyncIteration:
                 break

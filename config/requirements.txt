@@ -8,9 +8,9 @@ grpcio-tools>=1.51.0
 protobuf>=3.20.0
 
 # Core dependencies (reduced - no local model needed)
-torch>=2.0.0  # Still needed for audio tensor operations
-torchaudio>=2.0.0  # For audio processing
-numpy>=1.21.0
+torch>=2.0.0,<2.1.0  # Still needed for audio tensor operations (Python 3.8 compatible)
+torchaudio>=2.0.0,<2.1.0  # For audio processing (Python 3.8 compatible)
+numpy>=1.21.0,<1.25.0
 
 # Web server
 fastapi>=0.100.0
@@ -21,7 +21,7 @@ websockets>=11.0
 # Audio processing
 soundfile>=0.12.1
 librosa>=0.10.0
-scipy>=1.10.0  # For audio resampling
+scipy>=1.10.0,<1.11.0  # For audio resampling (Python 3.8 compatible)
 
 # AWS integration
 boto3>=1.26.0

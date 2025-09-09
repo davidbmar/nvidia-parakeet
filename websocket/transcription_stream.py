@@ -40,8 +40,8 @@ class TranscriptionStream:
             device: Ignored (Riva handles device management)
         """
         # Initialize Riva client instead of local model
-        # Enable mock mode for testing with step-by-step approach
-        self.riva_client = RivaASRClient(mock_mode=True)
+        # Use real Riva service now that it's running
+        self.riva_client = RivaASRClient(mock_mode=False)
         self.connected = False
         
         # Note: device parameter ignored as Riva runs on remote GPU

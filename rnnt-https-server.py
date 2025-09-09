@@ -207,27 +207,36 @@ async def websocket_transcribe(websocket: WebSocket):
             pass
 
 # Mount static files for web UI
-if os.path.exists('/opt/rnnt/static'):
-    app.mount("/static", StaticFiles(directory="/opt/rnnt/static"), name="static")
-    logger.info("📁 Static files mounted at /static")
+static_dir = None
+for path in ['/opt/rnnt/static', './static', '../static']:
+    if os.path.exists(path):
+        static_dir = path
+        break
 
-# Serve main UI at /static/index.html
+if static_dir:
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    logger.info(f"📁 Static files mounted at /static from {static_dir}")
+else:
+    logger.warning("⚠️ No static directory found")
+
+# Serve main UI at /ui
 @app.get("/ui", response_class=HTMLResponse)
 async def serve_ui():
     """Serve the main transcription UI"""
-    ui_path = Path("/opt/rnnt/static/index.html")
-    if ui_path.exists():
-        return HTMLResponse(ui_path.read_text())
-    else:
-        return HTMLResponse("""
-        <html>
-            <body>
-                <h1>RNN-T Transcription Server</h1>
-                <p>Server is running but UI files not found.</p>
-                <p>WebSocket endpoint: <code>wss://server/ws/transcribe</code></p>
-            </body>
-        </html>
-        """)
+    if static_dir:
+        ui_path = Path(static_dir) / "index.html"
+        if ui_path.exists():
+            return HTMLResponse(ui_path.read_text())
+    
+    return HTMLResponse("""
+    <html>
+        <body>
+            <h1>RNN-T Transcription Server</h1>
+            <p>Server is running but UI files not found.</p>
+            <p>WebSocket endpoint: <code>wss://server/ws/transcribe</code></p>
+        </body>
+    </html>
+    """)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
