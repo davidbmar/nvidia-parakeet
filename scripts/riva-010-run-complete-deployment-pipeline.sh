@@ -147,12 +147,11 @@ show_deployment_plan() {
     
     case $DEPLOYMENT_STRATEGY in
         1)
-            log "${CYAN}AWS EC2 Deployment:${NC}"
+            log "${CYAN}AWS EC2 Streaming Deployment:${NC}"
             log "  1. Deploy GPU instance ($GPU_INSTANCE_TYPE in $AWS_REGION)"
-            log "  2. Setup NVIDIA Riva server with Parakeet RNNT"
-            log "  3. Deploy WebSocket application server"
-            log "  4. Test complete system"
-            log "  5. Validate performance and connectivity"
+            log "  2. Deploy NVIDIA NIM Parakeet CTC Streaming container"
+            log "  3. Deploy WebSocket streaming server with browser interface"
+            log "  4. Test end-to-end real-time transcription"
             ;;
         2)
             log "${CYAN}Existing Server Deployment:${NC}"
@@ -183,12 +182,11 @@ main_deployment() {
     
     case $DEPLOYMENT_STRATEGY in
         1)
-            # AWS EC2 Deployment
+            # AWS EC2 Streaming Deployment
             run_step "$SCRIPT_DIR/riva-015-deploy-or-restart-aws-gpu-instance.sh" "GPU Instance Deployment"
-            run_step "$SCRIPT_DIR/riva-070-setup-traditional-riva-server.sh" "Riva Server Setup"
-            run_step "$SCRIPT_DIR/riva-090-deploy-websocket-asr-application.sh" "WebSocket App Deployment"
-            run_step "$SCRIPT_DIR/riva-100-test-basic-integration.sh" "System Testing"
-            run_step "$SCRIPT_DIR/riva-050-performance-validation.sh" "Performance Validation" true
+            run_step "$SCRIPT_DIR/riva-062-deploy-nim-parakeet-ctc-streaming.sh" "NIM Streaming Container"
+            run_step "$SCRIPT_DIR/riva-070-deploy-websocket-server.sh" "WebSocket Streaming Server"
+            run_step "$SCRIPT_DIR/riva-120-test-complete-end-to-end-pipeline.sh" "End-to-End Testing" true
             ;;
         2|3)
             # Existing Server or Local Deployment
