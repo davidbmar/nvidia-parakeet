@@ -86,12 +86,20 @@ if ! python3 -c "import fastapi" 2>/dev/null; then
     pip install --user "protobuf>=4.21.0"
 fi
 
-# Set environment for local NIM access (gRPC port for Riva client)
-export RIVA_HOST=localhost
-export RIVA_PORT=50051
+# CRITICAL FIX: Load .env file and set correct model name
+if [[ -f ".env" ]]; then
+    echo "Loading .env configuration..."
+    source .env
+    echo "Using model: $RIVA_MODEL"
+else
+    echo "WARNING: No .env file found, using environment defaults"
+    export RIVA_HOST=localhost
+    export RIVA_PORT=50051
+    export RIVA_MODEL=parakeet-tdt-0.6b-en-US-asr-offline-asr-bls-ensemble
+fi
 
 # Start the WebSocket server
-echo "Starting WebSocket server on port 8443..."
+echo "Starting WebSocket server on port 8443 with model: $RIVA_MODEL"
 python3 rnnt-https-server.py
 EOF
 
@@ -112,6 +120,8 @@ Restart=on-failure
 RestartSec=10
 Environment="RIVA_HOST=localhost"
 Environment="RIVA_PORT=50051"
+Environment="RIVA_MODEL=parakeet-tdt-0.6b-en-US-asr-offline-asr-bls-ensemble"
+EnvironmentFile=-/home/ubuntu/websocket-server/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -152,6 +162,19 @@ rm -rf websocket-server
 mkdir -p websocket-server
 cd websocket-server
 tar -xzf /tmp/websocket-deploy.tar.gz
+
+# CRITICAL FIX: Create .env file with correct model name
+echo "Creating .env configuration with correct model name..."
+cat > .env <<ENV_EOF
+RIVA_HOST=localhost
+RIVA_PORT=50051
+RIVA_SSL=false
+RIVA_MODEL=parakeet-tdt-0.6b-en-US-asr-offline-asr-bls-ensemble
+RIVA_LANGUAGE_CODE=en-US
+RIVA_ENABLE_AUTOMATIC_PUNCTUATION=true
+RIVA_ENABLE_WORD_TIME_OFFSETS=true
+ENV_EOF
+echo "✅ .env file created with correct model name"
 
 # Install Python dependencies
 echo "Installing dependencies..."
@@ -200,8 +223,9 @@ fi
 pkill -f "rnnt-https-server.py" || true
 
 # Start WebSocket server in background
-echo "Starting WebSocket server..."
-nohup python3 rnnt-https-server.py > websocket.log 2>&1 &
+echo "Starting WebSocket server with pytorch environment..."
+# CRITICAL FIX: Ensure pytorch environment is activated and .env is loaded
+nohup bash -c "source activate pytorch 2>/dev/null || echo 'Using system python'; python3 rnnt-https-server.py" > websocket.log 2>&1 &
 
 sleep 5
 
