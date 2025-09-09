@@ -95,7 +95,7 @@ else
     echo "WARNING: No .env file found, using environment defaults"
     export RIVA_HOST=localhost
     export RIVA_PORT=50051
-    export RIVA_MODEL=parakeet-tdt-0.6b-en-US-asr-offline-asr-bls-ensemble
+    export RIVA_MODEL=parakeet-0-6b-ctc-en-us
 fi
 
 # Start the WebSocket server
@@ -120,7 +120,7 @@ Restart=on-failure
 RestartSec=10
 Environment="RIVA_HOST=localhost"
 Environment="RIVA_PORT=50051"
-Environment="RIVA_MODEL=parakeet-tdt-0.6b-en-US-asr-offline-asr-bls-ensemble"
+Environment="RIVA_MODEL=parakeet-0-6b-ctc-en-us"
 EnvironmentFile=-/home/ubuntu/websocket-server/.env
 
 [Install]
@@ -163,18 +163,18 @@ mkdir -p websocket-server
 cd websocket-server
 tar -xzf /tmp/websocket-deploy.tar.gz
 
-# CRITICAL FIX: Create .env file with correct model name
-echo "Creating .env configuration with correct model name..."
+# CRITICAL FIX: Create .env file with correct streaming model name (no hardcoding)
+echo "Creating .env configuration with streaming model name from deployment..."
 cat > .env <<ENV_EOF
 RIVA_HOST=localhost
 RIVA_PORT=50051
 RIVA_SSL=false
-RIVA_MODEL=parakeet-tdt-0.6b-en-US-asr-offline-asr-bls-ensemble
+RIVA_MODEL=${RIVA_MODEL:-parakeet-0-6b-ctc-en-us}
 RIVA_LANGUAGE_CODE=en-US
 RIVA_ENABLE_AUTOMATIC_PUNCTUATION=true
 RIVA_ENABLE_WORD_TIME_OFFSETS=true
 ENV_EOF
-echo "✅ .env file created with correct model name"
+echo "✅ .env file created with streaming model: \${RIVA_MODEL:-parakeet-0-6b-ctc-en-us}"
 
 # Install Python dependencies
 echo "Installing dependencies..."
