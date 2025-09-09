@@ -95,7 +95,7 @@ else
     echo "WARNING: No .env file found, using environment defaults"
     export RIVA_HOST=localhost
     export RIVA_PORT=50051
-    export RIVA_MODEL=parakeet-0-6b-ctc-en-us
+    export RIVA_MODEL=parakeet-0.6b-en-US-asr-streaming
 fi
 
 # Start the WebSocket server
@@ -120,7 +120,7 @@ Restart=on-failure
 RestartSec=10
 Environment="RIVA_HOST=localhost"
 Environment="RIVA_PORT=50051"
-Environment="RIVA_MODEL=parakeet-0-6b-ctc-en-us"
+Environment="RIVA_MODEL=parakeet-0.6b-en-US-asr-streaming"
 EnvironmentFile=-/home/ubuntu/websocket-server/.env
 
 [Install]
@@ -169,7 +169,7 @@ cat > .env <<ENV_EOF
 RIVA_HOST=localhost
 RIVA_PORT=50051
 RIVA_SSL=false
-RIVA_MODEL=${RIVA_MODEL:-parakeet-0-6b-ctc-en-us}
+RIVA_MODEL=${RIVA_MODEL:-parakeet-0.6b-en-US-asr-streaming}
 RIVA_LANGUAGE_CODE=en-US
 RIVA_ENABLE_AUTOMATIC_PUNCTUATION=true
 RIVA_ENABLE_WORD_TIME_OFFSETS=true
