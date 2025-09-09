@@ -140,7 +140,7 @@ echo "   📤 Transferring to GPU instance..."
 
 # Copy to GPU instance using scp
 scp -o StrictHostKeyChecking=no \
-    -i ${SSH_KEY_PATH} \
+    -i ~/.ssh/${SSH_KEY_NAME}.pem \
     "$DEPLOY_DIR/websocket-deploy.tar.gz" \
     ubuntu@${GPU_INSTANCE_IP}:/tmp/
 
@@ -152,7 +152,7 @@ echo "   🚀 Deploying WebSocket server..."
 
 # Deploy on GPU instance
 ssh -o StrictHostKeyChecking=no \
-    -i ${SSH_KEY_PATH} \
+    -i ~/.ssh/${SSH_KEY_NAME}.pem \
     ubuntu@${GPU_INSTANCE_IP} <<'REMOTE_SCRIPT'
 set -e
 

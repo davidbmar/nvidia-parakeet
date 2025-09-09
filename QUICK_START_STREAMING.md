@@ -27,14 +27,27 @@ cp .env.example .env
 ```
 
 ### 2. Deploy Infrastructure
-```bash
-# Deploy AWS GPU instance with drivers
-./scripts/riva-050-deploy-aws-gpu-instance.sh
 
+#### 2a. Manual AWS Setup (Required)
+```bash
+# Create AWS EC2 g4dn.xlarge instance with:
+# - Deep Learning AMI GPU PyTorch 1.13.1 (Ubuntu 20.04)
+# - Security group: Allow ports 22, 8443, 8000, 50051
+# - Storage: 200GB EBS volume minimum
+# - Key pair for SSH access
+# 
+# Update .env with:
+# GPU_INSTANCE_IP=<your-instance-ip>
+# SSH_KEY_NAME=<your-key-name>
+# SSH_KEY_PATH=<path-to-your-key.pem>
+```
+
+#### 2b. Deploy Streaming Components
+```bash
 # Deploy CTC streaming container (CRITICAL: Use streaming container, not TDT)
 ./scripts/riva-062-deploy-nim-parakeet-ctc-streaming.sh
 
-# Deploy WebSocket server for browser interface
+# Deploy WebSocket server for browser interface  
 ./scripts/riva-070-deploy-websocket-server.sh
 ```
 
