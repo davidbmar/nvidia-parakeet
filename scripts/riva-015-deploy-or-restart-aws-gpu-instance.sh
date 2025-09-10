@@ -214,51 +214,90 @@ create_user_data() {
 #!/bin/bash
 set -e
 
+# Log all output
+exec > >(tee -a /var/log/user-data.log)
+exec 2>&1
+
+echo "Starting user data script at $(date)"
+
 # Update system
-apt-get update
-apt-get install -y htop nvtop git python3-pip docker.io
+echo "Updating system packages..."
+apt-get update || true
+apt-get install -y htop nvtop git python3-pip docker.io || true
 
 # Add ubuntu user to docker group
-usermod -aG docker ubuntu
+usermod -aG docker ubuntu || true
 
 # Install Docker Compose
+echo "Installing Docker Compose..."
 curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 
-# Install NVIDIA Container Toolkit
+# Clean up any existing NVIDIA repository configurations
+echo "Cleaning up existing NVIDIA repositories..."
+rm -f /etc/apt/sources.list.d/nvidia-container*
+rm -f /usr/share/keyrings/nvidia-container*
+
+# Install NVIDIA Container Toolkit (fixed version)
+echo "Installing NVIDIA Container Toolkit..."
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
-    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-    tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
-apt-get update
-apt-get install -y nvidia-container-toolkit
+# Create the repository file correctly
+cat > /etc/apt/sources.list.d/nvidia-container-toolkit.list <<NVIDIA_REPO
+deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/ubuntu20.04/\$(ARCH) /
+NVIDIA_REPO
+
+# Update and install
+apt-get update || true
+apt-get install -y nvidia-container-toolkit || true
 
 # Configure Docker for NVIDIA runtime
-nvidia-ctk runtime configure --runtime=docker
-systemctl restart docker
+echo "Configuring Docker for NVIDIA runtime..."
+nvidia-ctk runtime configure --runtime=docker || true
+systemctl restart docker || true
+
+# Verify Docker and NVIDIA runtime
+docker info | grep nvidia || echo "NVIDIA runtime not detected yet"
 
 # Create directories
+echo "Creating Riva directories..."
 mkdir -p /opt/riva/{logs,models,certs,config}
 chown -R ubuntu:ubuntu /opt/riva
 
 # Mark initialization complete
 echo "$(date): GPU instance initialization complete" > /opt/riva/init-complete
+echo "User data script completed at $(date)"
 EOF
 }
 
 # Main deployment
 echo -e "${BLUE}🔍 Checking existing instances...${NC}"
 
-# Check if instance already exists
+# Check if instance already exists - look for any instance with our deployment ID
 EXISTING_INSTANCE=$(aws ec2 describe-instances \
-    --filters "Name=tag:DeploymentId,Values=$DEPLOYMENT_ID" "Name=instance-state-name,Values=running,stopped" \
+    --filters "Name=tag:DeploymentId,Values=$DEPLOYMENT_ID" "Name=instance-state-name,Values=running,stopped,pending" \
     --query 'Reservations[0].Instances[0].InstanceId' \
     --output text \
     --region "$AWS_REGION" 2>/dev/null || echo "None")
 
-if [ "$EXISTING_INSTANCE" != "None" ] && [ "$EXISTING_INSTANCE" != "null" ]; then
+# Also check if there's an instance ID already saved in .env
+if [ "$EXISTING_INSTANCE" = "None" ] || [ "$EXISTING_INSTANCE" = "null" ] || [ -z "$EXISTING_INSTANCE" ]; then
+    if [ -n "$GPU_INSTANCE_ID" ]; then
+        echo -e "${BLUE}Checking instance from .env: $GPU_INSTANCE_ID${NC}"
+        INSTANCE_STATE=$(aws ec2 describe-instances \
+            --instance-ids "$GPU_INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].State.Name' \
+            --output text \
+            --region "$AWS_REGION" 2>/dev/null || echo "terminated")
+        
+        if [ "$INSTANCE_STATE" != "terminated" ] && [ "$INSTANCE_STATE" != "terminating" ]; then
+            EXISTING_INSTANCE="$GPU_INSTANCE_ID"
+        fi
+    fi
+fi
+
+if [ "$EXISTING_INSTANCE" != "None" ] && [ "$EXISTING_INSTANCE" != "null" ] && [ -n "$EXISTING_INSTANCE" ]; then
     echo -e "${YELLOW}⚠️  Found existing instance: $EXISTING_INSTANCE${NC}"
     
     # Get instance state
@@ -286,10 +325,20 @@ if [ "$EXISTING_INSTANCE" != "None" ] && [ "$EXISTING_INSTANCE" != "null" ]; the
         --output text \
         --region "$AWS_REGION")
     
-    # Update .env file
-    sed -i "s/RIVA_HOST=.*/RIVA_HOST=$INSTANCE_IP/" "$ENV_FILE"
-    sed -i "s/GPU_INSTANCE_ID=.*/GPU_INSTANCE_ID=$EXISTING_INSTANCE/" "$ENV_FILE"
-    sed -i "s/GPU_INSTANCE_IP=.*/GPU_INSTANCE_IP=$INSTANCE_IP/" "$ENV_FILE"
+    # Update .env file with helper function
+    update_or_add_env() {
+        local key="$1"
+        local value="$2"
+        if grep -q "^$key=" "$ENV_FILE"; then
+            sed -i "s/^$key=.*/$key=$value/" "$ENV_FILE"
+        else
+            echo "$key=$value" >> "$ENV_FILE"
+        fi
+    }
+    
+    update_or_add_env "RIVA_HOST" "$INSTANCE_IP"
+    update_or_add_env "GPU_INSTANCE_ID" "$EXISTING_INSTANCE"
+    update_or_add_env "GPU_INSTANCE_IP" "$INSTANCE_IP"
     
     echo -e "${GREEN}✅ Using existing instance: $EXISTING_INSTANCE${NC}"
     echo "Instance IP: $INSTANCE_IP"
@@ -356,11 +405,21 @@ INSTANCE_IP=$(aws ec2 describe-instances \
 
 echo "Instance IP: $INSTANCE_IP"
 
-# Update .env file
-sed -i "s/RIVA_HOST=.*/RIVA_HOST=$INSTANCE_IP/" "$ENV_FILE"
-echo "GPU_INSTANCE_ID=$INSTANCE_ID" >> "$ENV_FILE"
-echo "GPU_INSTANCE_IP=$INSTANCE_IP" >> "$ENV_FILE"
-echo "SECURITY_GROUP_ID=$SG_ID" >> "$ENV_FILE"
+# Update .env file - use sed to update or add if not exists
+update_or_add_env() {
+    local key="$1"
+    local value="$2"
+    if grep -q "^$key=" "$ENV_FILE"; then
+        sed -i "s/^$key=.*/$key=$value/" "$ENV_FILE"
+    else
+        echo "$key=$value" >> "$ENV_FILE"
+    fi
+}
+
+update_or_add_env "RIVA_HOST" "$INSTANCE_IP"
+update_or_add_env "GPU_INSTANCE_ID" "$INSTANCE_ID"
+update_or_add_env "GPU_INSTANCE_IP" "$INSTANCE_IP"
+update_or_add_env "SECURITY_GROUP_ID" "$SG_ID"
 
 # Wait for SSH to be available
 echo -e "${YELLOW}⏳ Waiting for SSH access...${NC}"
@@ -398,14 +457,52 @@ fi
 
 # Wait for initialization to complete (only if SSH is available)
 if [ "$SSH_READY" = "true" ]; then
-    echo -e "${YELLOW}⏳ Waiting for instance initialization...${NC}"
+    echo -e "${YELLOW}⏳ Waiting for instance initialization (max 5 minutes)...${NC}"
     INIT_COMPLETE=false
-    for i in {1..60}; do
+    for i in {1..30}; do
         if ssh -i "$HOME/.ssh/${SSH_KEY_NAME}.pem" -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$INSTANCE_IP 'test -f /opt/riva/init-complete' &>/dev/null; then
             echo -e "${GREEN}✅ Instance initialization complete${NC}"
             INIT_COMPLETE=true
             break
         fi
+        
+        # Check cloud-init status
+        CLOUD_INIT_STATUS=$(ssh -i "$HOME/.ssh/${SSH_KEY_NAME}.pem" -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$INSTANCE_IP 'cloud-init status 2>/dev/null | grep -o "status: .*" | cut -d" " -f2' 2>/dev/null || echo "unknown")
+        
+        if [ "$CLOUD_INIT_STATUS" = "error" ]; then
+            echo ""
+            echo -e "${YELLOW}⚠️  Cloud-init encountered an error. Attempting manual setup...${NC}"
+            
+            # Try to complete initialization manually
+            ssh -i "$HOME/.ssh/${SSH_KEY_NAME}.pem" -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$INSTANCE_IP 'bash -s' << 'MANUAL_INIT'
+# Manual initialization fallback
+sudo mkdir -p /opt/riva/{logs,models,certs,config}
+sudo chown -R ubuntu:ubuntu /opt/riva
+
+# Try to fix Docker NVIDIA runtime if needed
+if ! docker info 2>/dev/null | grep -q nvidia; then
+    # Clean and reinstall
+    sudo rm -f /etc/apt/sources.list.d/nvidia-container*
+    sudo rm -f /usr/share/keyrings/nvidia-container*
+    
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+    
+    echo "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/ubuntu20.04/\$(dpkg --print-architecture) /" | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    
+    sudo apt-get update || true
+    sudo apt-get install -y nvidia-container-toolkit || true
+    sudo nvidia-ctk runtime configure --runtime=docker || true
+    sudo systemctl restart docker || true
+fi
+
+# Mark as complete
+echo "$(date): GPU instance initialization complete (manual)" | sudo tee /opt/riva/init-complete
+MANUAL_INIT
+            
+            INIT_COMPLETE=true
+            break
+        fi
+        
         echo -n "."
         sleep 10
     done
@@ -413,6 +510,8 @@ if [ "$SSH_READY" = "true" ]; then
     
     if [ "$INIT_COMPLETE" = "false" ]; then
         echo -e "${YELLOW}⚠️  Initialization check timed out. The instance may still be setting up.${NC}"
+        echo "You can check the initialization log with:"
+        echo "  ssh -i ~/.ssh/${SSH_KEY_NAME}.pem ubuntu@$INSTANCE_IP 'sudo cat /var/log/user-data.log'"
     fi
 fi
 
