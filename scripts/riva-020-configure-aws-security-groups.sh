@@ -175,8 +175,19 @@ if [ -n "$GPU_INSTANCE_IP" ]; then
         --region "$AWS_REGION" 2>/dev/null || echo "")
     
     if [ -n "$GPU_PRIVATE_IP" ]; then
-        AUTHORIZED_IPS+=("$GPU_PRIVATE_IP")
-        IP_DESCRIPTIONS+=("GPU-Instance-Private")
+        # Check if this IP is already in the list
+        ip_exists=false
+        for existing_ip in "${AUTHORIZED_IPS[@]}"; do
+            if [ "$existing_ip" = "$GPU_PRIVATE_IP" ]; then
+                ip_exists=true
+                break
+            fi
+        done
+        
+        if [ "$ip_exists" = "false" ]; then
+            AUTHORIZED_IPS+=("$GPU_PRIVATE_IP")
+            IP_DESCRIPTIONS+=("GPU-Instance-Private")
+        fi
     fi
 fi
 
@@ -315,8 +326,11 @@ echo "  • To add more IPs later, run this script again"
 echo "  • Changes may take 30-60 seconds to propagate"
 echo ""
 echo -e "${CYAN}Next Steps:${NC}"
-echo "1. Update NVIDIA drivers: ./scripts/riva-018-update-nvidia-drivers.sh"
-echo "   (Will auto-download to S3 if not already there)"
-echo "2. Setup Riva server: ./scripts/riva-020-setup-riva-server.sh"
-echo "3. Deploy WebSocket app: ./scripts/riva-030-deploy-websocket-app.sh"
+echo "1. (Optional) Download NVIDIA drivers: ./scripts/riva-025-download-nvidia-gpu-drivers.sh"
+echo "   Note: The Deep Learning AMI already has drivers, so this is usually not needed"
+echo "2. Prepare Riva environment: ./scripts/riva-045-prepare-riva-environment.sh"
+echo "3. Deploy Riva server (choose one):"
+echo "   a) NIM Container: ./scripts/riva-062-deploy-nim-parakeet-ctc-streaming.sh"
+echo "   b) Traditional: ./scripts/riva-070-setup-traditional-riva-server.sh"
+echo "4. Deploy WebSocket app: ./scripts/riva-090-deploy-websocket-asr-application.sh"
 echo ""

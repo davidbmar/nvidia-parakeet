@@ -567,7 +567,9 @@ case $GPU_INSTANCE_TYPE in
 esac
 echo ""
 echo -e "${CYAN}Next Steps:${NC}"
-echo "1. Configure security access: ./scripts/riva-015-configure-security-access.sh"
-echo "2. Setup Riva server: ./scripts/riva-020-setup-riva-server.sh"
-echo "3. Deploy WebSocket app: ./scripts/riva-030-deploy-websocket-app.sh"
+echo "1. (Optional) Configure security: ./scripts/riva-020-configure-aws-security-groups.sh"
+echo "2. Prepare Riva environment: ./scripts/riva-045-prepare-riva-environment.sh"
+echo "3. Deploy Riva server (choose one):"
+echo "   a) NIM Container: ./scripts/riva-062-deploy-nim-parakeet-ctc-streaming.sh"
+echo "   b) Traditional: ./scripts/riva-070-setup-traditional-riva-server.sh"
 echo ""
