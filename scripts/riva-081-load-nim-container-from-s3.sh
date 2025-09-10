@@ -30,7 +30,7 @@ print_script_header "081" "Load NIM Container from S3" "Fast deployment from cac
 
 # S3 Configuration
 S3_BUCKET="${NIM_S3_CACHE_BUCKET:-dbm-cf-2-web}"
-S3_PREFIX="${NIM_S3_CACHE_PREFIX:-bintarball/nim-containers}"
+S3_PREFIX="${NIM_S3_CACHE_PREFIX:-riva-containers}"
 S3_BASE="s3://${S3_BUCKET}/${S3_PREFIX}"
 
 print_step_header "1" "Check S3 Cache Availability"
