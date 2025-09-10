@@ -16,7 +16,11 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}📥 NVIDIA Parakeet Riva ASR Deployment - Step 17: Download NVIDIA Drivers${NC}"
+echo -e "${BLUE}📥 NVIDIA Driver Download to S3 (Optional)${NC}"
+echo "================================================================"
+echo -e "${YELLOW}ℹ️  Purpose: Downloads NVIDIA drivers to your S3 bucket for backup/distribution${NC}"
+echo -e "${YELLOW}   Note: The AWS Deep Learning AMI already has drivers installed${NC}"
+echo -e "${YELLOW}   This script is typically not needed unless updating drivers${NC}"
 echo "================================================================"
 
 # Check if configuration exists
@@ -65,16 +69,23 @@ MAJOR_VERSION=$(echo "$NVIDIA_DRIVER_VERSION" | cut -d. -f1)
 DRIVER_FILES["NVIDIA-Linux-x86_64-$NVIDIA_DRIVER_VERSION.run"]="$DRIVER_BASE_URL/$NVIDIA_DRIVER_VERSION/NVIDIA-Linux-x86_64-$NVIDIA_DRIVER_VERSION.run"
 
 # Check if files exist on NVIDIA's servers
-echo -e "${CYAN}🔍 Checking NVIDIA download links...${NC}"
+echo -e "${CYAN}🔍 Checking NVIDIA download URLs (optional validation)...${NC}"
 for filename in "${!DRIVER_FILES[@]}"; do
     url="${DRIVER_FILES[$filename]}"
     echo -n "  • $filename ... "
     
-    if curl -s --head "$url" | grep -q "200 OK"; then
-        echo -e "${GREEN}✓ Available${NC}"
+    # Check HTTP status code
+    http_status=$(curl -s -o /dev/null -w "%{http_code}" --head "$url" 2>/dev/null || echo "000")
+    
+    if [ "$http_status" = "200" ]; then
+        echo -e "${GREEN}✓ Available at NVIDIA${NC}"
+    elif [ "$http_status" = "403" ] || [ "$http_status" = "302" ]; then
+        echo -e "${YELLOW}⚠️  May require authentication or redirect${NC}"
+        echo "    (This is normal for some NVIDIA URLs)"
     else
-        echo -e "${RED}✗ Not found${NC}"
+        echo -e "${YELLOW}⚠️  Cannot verify availability (HTTP $http_status)${NC}"
         echo "    URL: $url"
+        echo "    (The file may still exist - NVIDIA sometimes blocks HEAD requests)"
     fi
 done
 
@@ -95,7 +106,7 @@ else
 fi
 
 # Download and upload drivers
-echo -e "${BLUE}📥 Downloading NVIDIA drivers...${NC}"
+echo -e "${BLUE}📦 Managing NVIDIA drivers in S3...${NC}"
 echo ""
 
 cd "$TEMP_DIR"
@@ -104,11 +115,12 @@ for filename in "${!DRIVER_FILES[@]}"; do
     url="${DRIVER_FILES[$filename]}"
     s3_key="$S3_PREFIX/drivers/v$NVIDIA_DRIVER_VERSION/$filename"
     
-    echo -e "${CYAN}Downloading $filename...${NC}"
+    echo -e "${CYAN}Checking $filename...${NC}"
     
     # Check if already in S3
     if aws s3api head-object --bucket "$S3_BUCKET" --key "$s3_key" &>/dev/null; then
-        echo -e "${YELLOW}⚠️  File already exists in S3, skipping download${NC}"
+        echo -e "${GREEN}✓ Already in S3 bucket at: s3://$S3_BUCKET/$s3_key${NC}"
+        echo "  (No download needed - file is already stored)"
         continue
     fi
     
@@ -211,9 +223,9 @@ sed -i '/^NVIDIA_DRIVERS_S3_LOCATION=/d' "$ENV_FILE"
 echo "NVIDIA_DRIVERS_S3_LOCATION=s3://$S3_BUCKET/$S3_PREFIX/drivers/v$NVIDIA_DRIVER_VERSION/" >> "$ENV_FILE"
 
 echo ""
-echo -e "${GREEN}✅ NVIDIA Driver Download Complete!${NC}"
+echo -e "${GREEN}✅ NVIDIA Driver S3 Storage Check Complete!${NC}"
 echo "================================================================"
-echo "Driver Package Summary:"
+echo "Driver Storage Summary:"
 echo "  • Version: $NVIDIA_DRIVER_VERSION"
 echo "  • S3 Bucket: $S3_BUCKET"
 echo "  • S3 Location: s3://$S3_BUCKET/$S3_PREFIX/drivers/v$NVIDIA_DRIVER_VERSION/"
@@ -225,6 +237,13 @@ for filename in "${!DRIVER_FILES[@]}"; do
 done
 echo ""
 echo -e "${CYAN}Next Steps:${NC}"
-echo "1. Deploy drivers: ./scripts/riva-018-update-nvidia-drivers.sh"
-echo "2. Setup Riva server: ./scripts/riva-020-setup-riva-server.sh"
+echo "1. (Usually not needed) Transfer and install drivers:"
+echo "   a) Transfer: ./scripts/riva-030-transfer-drivers-to-gpu-instance.sh"
+echo "   b) Install: ./scripts/riva-040-install-nvidia-drivers-on-gpu.sh"
+echo "   Note: The Deep Learning AMI already has NVIDIA drivers installed"
+echo ""
+echo "2. Prepare Riva environment: ./scripts/riva-045-prepare-riva-environment.sh"
+echo "3. Deploy Riva server (choose one):"
+echo "   a) NIM Container: ./scripts/riva-062-deploy-nim-parakeet-ctc-streaming.sh"
+echo "   b) Traditional: ./scripts/riva-070-setup-traditional-riva-server.sh"
 echo ""
